@@ -35,6 +35,50 @@ function isDuplicateSubmission(log, clientId) {
   return false;
 }
 
+// ---------- 密碼錯誤鎖定 ----------
+// Apps Script 拿不到呼叫者 IP，沒辦法只鎖「亂猜密碼的那個人」，這裡採取比較
+// 粗但有效的做法：短時間內密碼連續錯太多次，就先把「送出」整個功能鎖住一段
+// 時間（鎖的是全部人，不分對象），擋掉自動化暴力猜密碼。
+var LOCK_THRESHOLD = 5; // 連續錯幾次就鎖
+var LOCK_WINDOW_SECONDS = 600; // 鎖多久（秒），10 分鐘
+
+function isSubmitLocked() {
+  return !!CacheService.getScriptCache().get("submitLocked");
+}
+
+function recordWrongPassword() {
+  var cache = CacheService.getScriptCache();
+  var count = Number(cache.get("wrongPasswordCount") || "0") + 1;
+  if (count >= LOCK_THRESHOLD) {
+    cache.put("submitLocked", "1", LOCK_WINDOW_SECONDS);
+    cache.remove("wrongPasswordCount");
+  } else {
+    cache.put("wrongPasswordCount", String(count), LOCK_WINDOW_SECONDS);
+  }
+}
+
+function clearWrongPasswordCount() {
+  CacheService.getScriptCache().remove("wrongPasswordCount");
+}
+
+// ---------- 稽核紀錄 ----------
+// 把每次送出的結果（不管成功/密碼錯誤/被鎖）連同時間、姓名記到「送出紀錄」
+// 分頁，方便事後自己抓可疑模式（例如短時間內密碼錯很多次）。分頁不存在時
+// 自動建立。記錄失敗不影響主要送出流程，所以外面包一層 try/catch。
+function logAccess(result, name) {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName("送出紀錄");
+    if (!sheet) {
+      sheet = ss.insertSheet("送出紀錄");
+      sheet.getRange(1, 1, 1, 3).setValues([["時間", "姓名", "結果"]]);
+    }
+    sheet.appendRow([new Date(), name || "", result]);
+  } catch (err) {
+    // 記錄失敗不影響主要流程，故意忽略
+  }
+}
+
 function doPost(e) {
   var lock = LockService.getScriptLock();
   try {
@@ -55,8 +99,17 @@ function doPost(e) {
     // 通關密碼：實際密碼值存在「專案設定→指令碼屬性」的 SUBMIT_PASSWORD，
     // 不會出現在這份原始碼裡。如果還沒設定這個屬性，就不檢查密碼（相容舊行為）。
     var requiredPassword = PropertiesService.getScriptProperties().getProperty("SUBMIT_PASSWORD");
-    if (requiredPassword && password !== requiredPassword) {
-      return respond({ ok: false, error: "通關密碼錯誤，請向管理者確認" });
+    if (requiredPassword) {
+      if (isSubmitLocked()) {
+        logAccess("已鎖定（密碼錯誤次數過多）", name);
+        return respond({ ok: false, error: "密碼錯誤次數過多，已暫時鎖定送出功能，請 10 分鐘後再試" });
+      }
+      if (password !== requiredPassword) {
+        recordWrongPassword();
+        logAccess("密碼錯誤", name);
+        return respond({ ok: false, error: "通關密碼錯誤，請向管理者確認" });
+      }
+      clearWrongPasswordCount();
     }
 
     if (!name) return respond({ ok: false, error: "請填姓名" });
@@ -77,6 +130,7 @@ function doPost(e) {
 
     // 同一次送出（含前端自動重試）若已經寫入過，直接回成功，不要再寫一次
     if (clientId && isDuplicateSubmission(log, clientId)) {
+      logAccess("重複送出（已擋下，未再寫入）", name);
       return respond({ ok: true, name: name, duplicate: true });
     }
 
@@ -100,6 +154,7 @@ function doPost(e) {
     log.getRange(nextRow, 2, 1, 2).setNumberFormat("yyyy-mm-dd");
     if (clientId) log.getRange(nextRow, 7).setValue(clientId); // G欄：重複寫入防護用，勿手動編輯
 
+    logAccess("成功", name);
     return respond({ ok: true, name: name });
   } catch (err) {
     return respond({ ok: false, error: String(err) });
