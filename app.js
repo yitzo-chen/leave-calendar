@@ -320,14 +320,14 @@
       setStatus(status, "送出中…", "");
 
       try {
-        const result = await submitLeave({ name, start, end, type, note });
+        const result = await submitLeaveWithRetry({ name, start, end, type, note }, status);
         if (!result.ok) throw new Error(result.error || "送出失敗");
         setStatus(status, "已送出！月曆更新中…", "success");
         await loadFromSheet();
         render();
         setTimeout(() => dialog.close(), 900);
       } catch (err) {
-        setStatus(status, "送出失敗：" + err.message, "error");
+        setStatus(status, "送出失敗：" + err.message + "（若一直失敗，稍等半分鐘再試一次）", "error");
       } finally {
         submitBtn.disabled = false;
       }
@@ -342,6 +342,29 @@
 
   function toDateInputValue(d) {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }
+
+  function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  // Apps Script 網頁應用程式閒置一段時間後，第一次呼叫常需要 5~20 秒「冷啟動」，
+  // 有時還會回傳暫時性的錯誤（如 404）。這裡自動重試幾次，避免使用者誤以為系統壞了。
+  async function submitLeaveWithRetry(payload, statusEl) {
+    const delays = [0, 3000, 6000];
+    let lastErr;
+    for (let i = 0; i < delays.length; i++) {
+      if (i > 0) {
+        setStatus(statusEl, `送出中…第一次連線較慢，重試中（${i + 1}/${delays.length}）`, "");
+        await sleep(delays[i]);
+      }
+      try {
+        return await submitLeave(payload);
+      } catch (err) {
+        lastErr = err;
+      }
+    }
+    throw lastErr;
   }
 
   async function submitLeave(payload) {
