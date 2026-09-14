@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title id="pageTitle">員工休假月曆</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23C8630A'/%3E%3Ctext x='50' y='68' font-size='58' text-anchor='middle' fill='white' font-family='Arial'%3E休%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true">休</span>
+    <div>
+      <h1 id="companyName">員工休假月曆</h1>
+      <p class="subtitle">即時同步 Google 試算表・免登入查看</p>
+    </div>
+  </div>
+</header>
+
+<div id="demoBanner" class="banner" hidden>
+  目前顯示<strong>示範資料</strong>——請在 <code>config.js</code> 填入 Google 試算表 ID 以顯示真實資料。
+</div>
+<div id="errorBanner" class="banner banner-error" hidden></div>
+
+<main>
+  <div class="toolbar">
+    <div class="month-nav">
+      <button id="prevMonth" class="icon-btn" aria-label="上個月">‹</button>
+      <div class="month-label" id="monthLabel">2026 年 9 月</div>
+      <button id="nextMonth" class="icon-btn" aria-label="下個月">›</button>
+      <button id="todayBtn" class="ghost-btn">回到本月</button>
+    </div>
+    <div class="actions">
+      <button id="printBtn" class="action-btn">🖨️ 列印本月</button>
+      <button id="downloadBtn" class="action-btn">⬇️ 下載本月 CSV</button>
+      <a id="sheetLink" class="action-btn action-link" href="#" target="_blank" rel="noopener">📄 開啟完整試算表</a>
+    </div>
+  </div>
+
+  <div class="layout">
+    <aside class="roster" aria-label="員工列表">
+      <h2>員工<span id="empCount" class="count-pill">0</span></h2>
+      <ul id="employeeList" class="employee-list"></ul>
+      <p class="hint">點名字可篩選月曆，再點一次取消</p>
+    </aside>
+
+    <section class="calendar-wrap" aria-label="休假月曆">
+      <div class="weekday-row">
+        <span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span>
+      </div>
+      <div id="calendarGrid" class="calendar-grid"></div>
+      <div class="legend">
+        <span class="legend-item"><i class="dot dot-full"></i>全天休假</span>
+        <span class="legend-item"><i class="dot dot-half"></i>半天休假（上/下）</span>
+        <span class="legend-item"><i class="dot dot-weekend"></i>週末</span>
+      </div>
+    </section>
+  </div>
+</main>
+
+<footer class="pagefoot">
+  資料來源：Google 試算表「員工休假管理表」・列印或下載請用上方按鈕
+</footer>
+
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
