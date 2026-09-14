@@ -326,7 +326,7 @@ main { padding: 20px 28px 40px; max-width: 1180px; margin: 0 auto; }
 .form-status.success { background: var(--full-soft); }
 
 @media print {
-  .topbar .subtitle, .banner, .toolbar .actions, .hint, .ghost-btn, .leave-dialog { display: none !important; }
+  .topbar .subtitle, .banner, .toolbar .actions, .hint, .ghost-btn, .leave-dialog, .icon-btn { display: none !important; }
   body { background: #fff; }
   .roster, .calendar-wrap { box-shadow: none; border-color: #ccc; }
   .layout { grid-template-columns: 160px 1fr; }

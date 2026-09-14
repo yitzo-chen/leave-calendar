@@ -37,20 +37,23 @@
   }
 
   async function loadFromSheet() {
-    try {
-      const [roster, log] = await Promise.all([
-        fetchSheetCsv(cfg.SHEET_ID, cfg.ROSTER_SHEET_NAME),
-        fetchSheetCsv(cfg.SHEET_ID, cfg.LOG_SHEET_NAME),
-      ]);
-      state.employees = parseRoster(roster);
-      state.records = parseLog(log);
-      el("errorBanner").hidden = true;
-      return true;
-    } catch (err) {
-      showError("讀取 Google 試算表失敗：" + err.message + "（請確認試算表已設定「知道連結的使用者」可檢視，且分頁名稱與 config.js 相符）");
+    const [rosterResult, logResult] = await Promise.allSettled([
+      fetchSheetCsv(cfg.SHEET_ID, cfg.ROSTER_SHEET_NAME),
+      fetchSheetCsv(cfg.SHEET_ID, cfg.LOG_SHEET_NAME),
+    ]);
+    const failed = [];
+    if (rosterResult.status === "rejected") failed.push(`員工名單分頁（${rosterResult.reason.message}）`);
+    if (logResult.status === "rejected") failed.push(`請假紀錄分頁（${logResult.reason.message}）`);
+
+    if (failed.length) {
+      showError(`讀取 Google 試算表失敗：${failed.join("、")}（請確認試算表已設定「知道連結的使用者」可檢視，且分頁名稱與 config.js 相符）`);
       loadDemoData();
       return false;
     }
+    state.employees = parseRoster(rosterResult.value);
+    state.records = parseLog(logResult.value);
+    el("errorBanner").hidden = true;
+    return true;
   }
 
   function loadDemoData() {
@@ -285,13 +288,36 @@
       addBtn.title = "尚未設定 config.js 的 SCRIPT_URL，暫時無法從網頁送出請假申請";
     }
 
+    const startInput = el("fStart");
+    const endInput = el("fEnd");
+    const typeSelect = el("fType");
+
+    // 日期選擇範圍限制在前後一年，避免手滑選到離譜的年份卻沒有任何提示
+    const today = new Date();
+    const minDate = toDateInputValue(new Date(today.getFullYear() - 1, today.getMonth(), today.getDate()));
+    const maxDate = toDateInputValue(new Date(today.getFullYear() + 1, today.getMonth(), today.getDate()));
+    startInput.min = minDate;
+    startInput.max = maxDate;
+    endInput.min = minDate;
+    endInput.max = maxDate;
+
+    // 半天假：結束日期強制跟開始日期同一天，避免「半天」被誤送成橫跨好幾天
+    function syncHalfDayEnd() {
+      const isHalfDay = typeSelect.value !== "全天";
+      endInput.readOnly = isHalfDay;
+      if (isHalfDay) endInput.value = startInput.value;
+    }
+    typeSelect.addEventListener("change", syncHalfDayEnd);
+    startInput.addEventListener("change", syncHalfDayEnd);
+
     addBtn.addEventListener("click", () => {
       form.reset();
       status.hidden = true;
       status.className = "form-status";
       const todayStr = toDateInputValue(new Date());
-      el("fStart").value = todayStr;
-      el("fEnd").value = todayStr;
+      startInput.value = todayStr;
+      endInput.value = todayStr;
+      syncHalfDayEnd();
       dialog.showModal();
       el("fName").focus();
     });
@@ -305,6 +331,7 @@
       const end = el("fEnd").value;
       const type = el("fType").value;
       const note = el("fNote").value.trim();
+      const password = el("fPassword").value;
 
       if (!name || !start || !end) {
         setStatus(status, "姓名、開始日期、結束日期為必填", "error");
@@ -319,8 +346,11 @@
       submitBtn.disabled = true;
       setStatus(status, "送出中…", "");
 
+      // 同一次送出（含底下的自動重試）都帶同一個 clientId，讓後端能認出
+      // 「這其實是同一次申請」，避免冷啟動假失敗造成重試把同一筆假寫兩次。
+      const clientId = makeClientId();
       try {
-        const result = await submitLeaveWithRetry({ name, start, end, type, note }, status);
+        const result = await submitLeaveWithRetry({ name, start, end, type, note, password, clientId }, status);
         if (!result.ok) throw new Error(result.error || "送出失敗");
         setStatus(status, "已送出！月曆更新中…", "success");
         await loadFromSheet();
@@ -346,6 +376,11 @@
 
   function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  function makeClientId() {
+    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+    return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   }
 
   // Apps Script 網頁應用程式閒置一段時間後，第一次呼叫常需要 5~20 秒「冷啟動」，

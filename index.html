@@ -65,7 +65,7 @@
     <h2>請假申請</h2>
     <label>
       姓名
-      <input id="fName" name="name" list="empNames" placeholder="選擇或輸入姓名" required autocomplete="off">
+      <input id="fName" name="name" list="empNames" placeholder="選擇或輸入姓名" required autocomplete="off" maxlength="20">
       <datalist id="empNames"></datalist>
     </label>
     <p class="field-hint">名單裡沒有你的名字？直接輸入新名字送出即可自動加入員工名單。</p>
@@ -91,6 +91,10 @@
     <label>
       備註（選填）
       <input id="fNote" name="note" type="text" maxlength="80" placeholder="例如：返鄉處理家事">
+    </label>
+    <label>
+      通關密碼
+      <input id="fPassword" name="password" type="password" autocomplete="off" placeholder="向管理者索取">
     </label>
     <div id="formStatus" class="form-status" hidden></div>
     <div class="dialog-actions">
