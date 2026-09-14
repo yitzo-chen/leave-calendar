@@ -313,7 +313,7 @@ main { padding: 20px 28px 40px; max-width: 1180px; margin: 0 auto; }
   outline: none;
   border-color: var(--accent);
 }
-.field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.field-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
 .field-hint { margin: -6px 0 0; font-size: 12px; color: var(--text-muted); }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 6px; }
 .form-status {
@@ -332,4 +332,49 @@ main { padding: 20px 28px 40px; max-width: 1180px; margin: 0 auto; }
   .layout { grid-template-columns: 160px 1fr; }
   main { padding: 0; max-width: none; }
   .day-cell { min-height: 70px; }
+}
+
+/* ---------- 假單輸出表單 ---------- */
+.pf-type-fieldset {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px 10px;
+  margin: 0;
+}
+.pf-type-fieldset legend { font-size: 13px; color: var(--text-muted); padding: 0 4px; }
+.pf-radio { flex-direction: row !important; align-items: center; gap: 6px !important; display: inline-flex; font-size: 14px; color: var(--text); margin-right: 14px; }
+.pf-radio input { width: auto; padding: 0; }
+.pf-section-label { margin: 2px 0 -4px; font-size: 13px; color: var(--text-muted); }
+.pf-datetime-row { display: grid; grid-template-columns: minmax(0,1.4fr) minmax(0,1fr) minmax(0,.8fr) minmax(0,.8fr); gap: 8px; }
+.pf-datetime-row input, .pf-datetime-row select {
+  font: inherit; font-size: 14px; color: var(--text);
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 8px;
+  min-width: 0;
+}
+@media (max-width: 480px) {
+  .pf-datetime-row { grid-template-columns: minmax(0,1fr) minmax(0,1fr); }
+}
+.leave-dialog textarea {
+  font: inherit; font-size: 14px; color: var(--text);
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 10px; resize: vertical;
+}
+
+/* ---------- 假單列印範本（平時隱藏，只有列印假單時顯示） ---------- */
+.print-leave-form { display: none; }
+.print-leave-form table { width: 100%; border-collapse: collapse; font-size: 15px; color: #000; }
+.print-leave-form td { border: 1px solid #000; padding: 10px 12px; vertical-align: top; }
+.pf-header-companies { text-align: center; font-size: 13px; letter-spacing: .02em; }
+.pf-form-title { text-align: center; font-size: 24px; font-weight: 700; letter-spacing: .3em; padding: 12px 0; }
+.pf-label-cell { font-weight: 700; background: #f0f0f0; }
+.pf-checkbox-row { line-height: 1.9; }
+.pf-checkbox { display: inline-block; min-width: 16px; }
+.pf-handover-cell { height: 70px; }
+.pf-sign-row td { height: 90px; text-align: center; font-weight: 700; vertical-align: top; padding-top: 10px; }
+
+@media print {
+  body.printing-leave-form > *:not(.print-leave-form) { display: none !important; }
+  body.printing-leave-form .print-leave-form { display: block; }
+  body.printing-leave-form { background: #fff; }
 }

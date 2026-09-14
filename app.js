@@ -25,6 +25,7 @@
     el("printBtn").addEventListener("click", () => window.print());
     el("downloadBtn").addEventListener("click", downloadCSV);
     setupLeaveForm();
+    setupLeaveFormPrint();
 
     if (cfg.SHEET_ID) {
       el("sheetLink").href = `https://docs.google.com/spreadsheets/d/${cfg.SHEET_ID}/edit`;
@@ -410,6 +411,83 @@
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res.json();
+  }
+
+  // ---------- 假單輸出（列印用，不寫入 Google 試算表） ----------
+  function setupLeaveFormPrint() {
+    const SITE_KEY = "leaveForm.lastSite";
+    const dialog = el("leaveFormDialog");
+    const form = el("leaveFormForm");
+    const status = el("pfFormStatus");
+
+    el("leaveFormBtn").addEventListener("click", () => {
+      form.reset();
+      status.hidden = true;
+      el("pfSiteInput").value = localStorage.getItem(SITE_KEY) || "";
+      const todayStr = toDateInputValue(new Date());
+      el("pfStartDate").value = todayStr;
+      el("pfEndDate").value = todayStr;
+      dialog.showModal();
+      el("pfNameInput").focus();
+    });
+
+    el("leaveFormCancelBtn").addEventListener("click", () => dialog.close());
+
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const name = el("pfNameInput").value.trim();
+      const site = el("pfSiteInput").value.trim();
+      const proxy = el("pfProxyInput").value.trim();
+      const typeInput = form.querySelector('input[name="pfType"]:checked');
+      const startDate = el("pfStartDate").value;
+      const endDate = el("pfEndDate").value;
+      const handover = el("pfHandoverInput").value.trim();
+
+      if (!name) { setStatus(status, "請填姓名", "error"); return; }
+      if (!typeInput) { setStatus(status, "請選擇假別", "error"); return; }
+      if (!startDate || !endDate) { setStatus(status, "請選開始/結束日期", "error"); return; }
+      if (endDate < startDate) { setStatus(status, "結束日期不能早於開始日期", "error"); return; }
+
+      localStorage.setItem(SITE_KEY, site);
+      status.hidden = true;
+
+      const type = typeInput.value;
+      const startText = formatZhDateTime(startDate, el("pfStartAmpm").value, el("pfStartHour").value, el("pfStartMin").value);
+      const endText = formatZhDateTime(endDate, el("pfEndAmpm").value, el("pfEndHour").value, el("pfEndMin").value);
+
+      el("pfOutName").textContent = name;
+      el("pfOutSite").textContent = site || "－";
+      el("pfOutProxy").textContent = proxy || "－";
+      el("pfOutFillDate").textContent = formatZhDate(toDateInputValue(new Date()));
+      el("pfOutChkMarriage").textContent = type === "婚假" ? "☑" : "□";
+      el("pfOutChkPersonal").textContent = type === "事假" ? "☑" : "□";
+      el("pfOutChkSick").textContent = type === "病假" ? "☑" : "□";
+      el("pfOutChkFuneral").textContent = type === "喪假" ? "☑" : "□";
+      el("pfOutStart").textContent = startText;
+      el("pfOutEnd").textContent = endText;
+      el("pfOutDays").textContent = el("pfDaysInput").value || "－";
+      el("pfOutHours").textContent = el("pfHoursInput").value || "－";
+      el("pfOutHandover").textContent = handover || "－";
+
+      dialog.close();
+      document.body.classList.add("printing-leave-form");
+      setTimeout(() => window.print(), 50);
+    });
+
+    window.addEventListener("afterprint", () => {
+      document.body.classList.remove("printing-leave-form");
+    });
+  }
+
+  function formatZhDate(dateStr) {
+    const [y, m, d] = dateStr.split("-");
+    return `${y}年${Number(m)}月${Number(d)}日`;
+  }
+
+  function formatZhDateTime(dateStr, ampm, hour, minute) {
+    const h = String(hour || "").padStart(1, "0") || "0";
+    const m = String(minute || "0").padStart(2, "0");
+    return `${formatZhDate(dateStr)} ${ampm}${h}時${m}分`;
   }
 
   // ---------- download ----------
