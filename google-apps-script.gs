@@ -4,6 +4,18 @@
  * 詳細部署步驟見 README.md「開放網頁直接填假」章節。
  */
 
+// 找某欄第一個真正空白的列（從第2列開始）；欄位可能因為原始檔案預填了公式
+// 導致 getLastRow() 不可靠，所以逐列檢查內容，而不是只看 getLastRow()。
+function firstEmptyRow(sheet, col) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return 2;
+  var vals = sheet.getRange(2, col, lastRow - 1, 1).getValues();
+  for (var i = 0; i < vals.length; i++) {
+    if (String(vals[i][0]).trim() === "") return i + 2;
+  }
+  return lastRow + 1;
+}
+
 function doPost(e) {
   var lock = LockService.getScriptLock();
   lock.waitLock(10000);
@@ -38,16 +50,15 @@ function doPost(e) {
           .filter(Boolean)
       : [];
     if (names.indexOf(name) === -1) {
-      roster.getRange(lastRosterRow + 1, 1).setValue(name);
+      roster.getRange(firstEmptyRow(roster, 1), 1).setValue(name);
     }
 
     // 寫入一筆請假紀錄，天數公式跟 xlsx 原本的邏輯一致
-    var nextRow = Math.max(log.getLastRow() + 1, 2);
+    var nextRow = firstEmptyRow(log, 1);
     log.getRange(nextRow, 1, 1, 5).setValues([[name, start, end, type, note]]);
     log.getRange(nextRow, 6).setFormula(
       "=IF(A" + nextRow + '="","",IF(D' + nextRow + '="全天",C' + nextRow + "-B" + nextRow + "+1,0.5))"
     );
-    log.getRange(nextRow, 6).setNumberFormat("0.#");
     log.getRange(nextRow, 2, 1, 2).setNumberFormat("yyyy-mm-dd");
 
     return respond({ ok: true, name: name });
