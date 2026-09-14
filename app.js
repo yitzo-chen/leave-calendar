@@ -356,7 +356,11 @@
         setStatus(status, "已送出！月曆更新中…", "success");
         await loadFromSheet();
         render();
-        setTimeout(() => dialog.close(), 900);
+        const alsoPrintForm = el("fAlsoPrintForm").checked;
+        setTimeout(() => {
+          dialog.close();
+          if (alsoPrintForm) openLeaveFormPrintDialog({ name, start, end });
+        }, 900);
       } catch (err) {
         setStatus(status, "送出失敗：" + err.message + "（若一直失敗，稍等半分鐘再試一次）", "error");
       } finally {
@@ -414,22 +418,30 @@
   }
 
   // ---------- 假單輸出（列印用，不寫入 Google 試算表） ----------
+  const PF_SITE_KEY = "leaveForm.lastSite";
+
+  // prefill 可帶 {name, start, end}，從「我要請假」送出成功後直接接續使用
+  function openLeaveFormPrintDialog(prefill) {
+    const dialog = el("leaveFormDialog");
+    const form = el("leaveFormForm");
+    const status = el("pfFormStatus");
+    form.reset();
+    status.hidden = true;
+    el("pfSiteInput").value = localStorage.getItem(PF_SITE_KEY) || "";
+    const todayStr = toDateInputValue(new Date());
+    el("pfStartDate").value = (prefill && prefill.start) || todayStr;
+    el("pfEndDate").value = (prefill && prefill.end) || todayStr;
+    if (prefill && prefill.name) el("pfNameInput").value = prefill.name;
+    dialog.showModal();
+    el("pfNameInput").focus();
+  }
+
   function setupLeaveFormPrint() {
-    const SITE_KEY = "leaveForm.lastSite";
     const dialog = el("leaveFormDialog");
     const form = el("leaveFormForm");
     const status = el("pfFormStatus");
 
-    el("leaveFormBtn").addEventListener("click", () => {
-      form.reset();
-      status.hidden = true;
-      el("pfSiteInput").value = localStorage.getItem(SITE_KEY) || "";
-      const todayStr = toDateInputValue(new Date());
-      el("pfStartDate").value = todayStr;
-      el("pfEndDate").value = todayStr;
-      dialog.showModal();
-      el("pfNameInput").focus();
-    });
+    el("leaveFormBtn").addEventListener("click", () => openLeaveFormPrintDialog());
 
     el("leaveFormCancelBtn").addEventListener("click", () => dialog.close());
 
@@ -448,7 +460,7 @@
       if (!startDate || !endDate) { setStatus(status, "請選開始/結束日期", "error"); return; }
       if (endDate < startDate) { setStatus(status, "結束日期不能早於開始日期", "error"); return; }
 
-      localStorage.setItem(SITE_KEY, site);
+      localStorage.setItem(PF_SITE_KEY, site);
       status.hidden = true;
 
       const type = typeInput.value;

@@ -344,6 +344,11 @@ main { padding: 20px 28px 40px; max-width: 1180px; margin: 0 auto; }
 .pf-type-fieldset legend { font-size: 13px; color: var(--text-muted); padding: 0 4px; }
 .pf-radio { flex-direction: row !important; align-items: center; gap: 6px !important; display: inline-flex; font-size: 14px; color: var(--text); margin-right: 14px; }
 .pf-radio input { width: auto; padding: 0; }
+.pf-checkbox-inline {
+  flex-direction: row !important; align-items: center; gap: 8px !important;
+  font-size: 13px; color: var(--text);
+}
+.pf-checkbox-inline input { width: auto; padding: 0; flex: none; }
 .pf-section-label { margin: 2px 0 -4px; font-size: 13px; color: var(--text-muted); }
 .pf-datetime-row { display: grid; grid-template-columns: minmax(0,1.4fr) minmax(0,1fr) minmax(0,.8fr) minmax(0,.8fr); gap: 8px; }
 .pf-datetime-row input, .pf-datetime-row select {
