@@ -32,6 +32,7 @@
       <button id="todayBtn" class="ghost-btn">回到本月</button>
     </div>
     <div class="actions">
+      <button id="addLeaveBtn" class="action-btn action-primary">➕ 我要請假</button>
       <button id="printBtn" class="action-btn">🖨️ 列印本月</button>
       <button id="downloadBtn" class="action-btn">⬇️ 下載本月 CSV</button>
       <a id="sheetLink" class="action-btn action-link" href="#" target="_blank" rel="noopener">📄 開啟完整試算表</a>
@@ -58,6 +59,46 @@
     </section>
   </div>
 </main>
+
+<dialog id="leaveDialog" class="leave-dialog">
+  <form id="leaveForm" method="dialog">
+    <h2>請假申請</h2>
+    <label>
+      姓名
+      <input id="fName" name="name" list="empNames" placeholder="選擇或輸入姓名" required autocomplete="off">
+      <datalist id="empNames"></datalist>
+    </label>
+    <p class="field-hint">名單裡沒有你的名字？直接輸入新名字送出即可自動加入員工名單。</p>
+    <div class="field-row">
+      <label>
+        開始日期
+        <input id="fStart" name="start" type="date" required>
+      </label>
+      <label>
+        結束日期
+        <input id="fEnd" name="end" type="date" required>
+      </label>
+    </div>
+    <label>
+      假別
+      <select id="fType" name="type">
+        <option value="全天">全天</option>
+        <option value="上午半天">上午半天</option>
+        <option value="下午半天">下午半天</option>
+      </select>
+    </label>
+    <p class="field-hint">半天假請把開始日期和結束日期設成同一天。</p>
+    <label>
+      備註（選填）
+      <input id="fNote" name="note" type="text" maxlength="80" placeholder="例如：返鄉處理家事">
+    </label>
+    <div id="formStatus" class="form-status" hidden></div>
+    <div class="dialog-actions">
+      <button type="button" id="cancelLeaveBtn" class="ghost-btn">取消</button>
+      <button type="submit" id="submitLeaveBtn" class="action-btn action-primary">送出</button>
+    </div>
+  </form>
+</dialog>
 
 <footer class="pagefoot">
   資料來源：Google 試算表「員工休假管理表」・列印或下載請用上方按鈕

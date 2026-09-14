@@ -144,6 +144,14 @@ main { padding: 20px 28px 40px; max-width: 1180px; margin: 0 auto; }
   gap: 6px;
 }
 .action-btn:hover { border-color: var(--accent); color: var(--accent); }
+.action-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 700;
+}
+.action-primary:hover { background: var(--accent); color: #fff; opacity: .9; }
+.action-btn:disabled { opacity: .5; cursor: not-allowed; }
 
 .layout {
   display: grid;
@@ -273,8 +281,52 @@ main { padding: 20px 28px 40px; max-width: 1180px; margin: 0 auto; }
   padding: 20px 0 32px;
 }
 
+.leave-dialog {
+  border: none;
+  border-radius: var(--radius);
+  padding: 22px 24px 20px;
+  width: min(420px, 90vw);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow);
+}
+.leave-dialog::backdrop { background: rgba(20, 18, 15, .55); }
+.leave-dialog h2 { margin: 0 0 16px; font-size: 18px; }
+.leave-dialog form { display: flex; flex-direction: column; gap: 12px; }
+.leave-dialog label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.leave-dialog input, .leave-dialog select {
+  font: inherit;
+  font-size: 14px;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.leave-dialog input:focus, .leave-dialog select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.field-hint { margin: -6px 0 0; font-size: 12px; color: var(--text-muted); }
+.dialog-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 6px; }
+.form-status {
+  font-size: 13px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--accent-soft);
+}
+.form-status.error { background: var(--danger-soft); color: var(--danger); }
+.form-status.success { background: var(--full-soft); }
+
 @media print {
-  .topbar .subtitle, .banner, .toolbar .actions, .hint, .ghost-btn { display: none !important; }
+  .topbar .subtitle, .banner, .toolbar .actions, .hint, .ghost-btn, .leave-dialog { display: none !important; }
   body { background: #fff; }
   .roster, .calendar-wrap { box-shadow: none; border-color: #ccc; }
   .layout { grid-template-columns: 160px 1fr; }

@@ -24,25 +24,33 @@
     el("todayBtn").addEventListener("click", goToday);
     el("printBtn").addEventListener("click", () => window.print());
     el("downloadBtn").addEventListener("click", downloadCSV);
+    setupLeaveForm();
 
     if (cfg.SHEET_ID) {
       el("sheetLink").href = `https://docs.google.com/spreadsheets/d/${cfg.SHEET_ID}/edit`;
-      try {
-        const [roster, log] = await Promise.all([
-          fetchSheetCsv(cfg.SHEET_ID, cfg.ROSTER_SHEET_NAME),
-          fetchSheetCsv(cfg.SHEET_ID, cfg.LOG_SHEET_NAME),
-        ]);
-        state.employees = parseRoster(roster);
-        state.records = parseLog(log);
-      } catch (err) {
-        showError("讀取 Google 試算表失敗：" + err.message + "（請確認試算表已設定「知道連結的使用者」可檢視，且分頁名稱與 config.js 相符）");
-        loadDemoData();
-      }
+      await loadFromSheet();
     } else {
       loadDemoData();
     }
 
     render();
+  }
+
+  async function loadFromSheet() {
+    try {
+      const [roster, log] = await Promise.all([
+        fetchSheetCsv(cfg.SHEET_ID, cfg.ROSTER_SHEET_NAME),
+        fetchSheetCsv(cfg.SHEET_ID, cfg.LOG_SHEET_NAME),
+      ]);
+      state.employees = parseRoster(roster);
+      state.records = parseLog(log);
+      el("errorBanner").hidden = true;
+      return true;
+    } catch (err) {
+      showError("讀取 Google 試算表失敗：" + err.message + "（請確認試算表已設定「知道連結的使用者」可檢視，且分頁名稱與 config.js 相符）");
+      loadDemoData();
+      return false;
+    }
   }
 
   function loadDemoData() {
@@ -180,6 +188,8 @@
     const ul = el("employeeList");
     ul.innerHTML = "";
     el("empCount").textContent = state.employees.length;
+    const datalist = el("empNames");
+    datalist.innerHTML = state.employees.map((e) => `<option value="${escapeHtml(e.name)}">`).join("");
     state.employees.forEach((emp) => {
       const days = monthlyDays(emp.name);
       const li = document.createElement("li");
@@ -261,6 +271,87 @@
 
   function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+
+  // ---------- 請假申請表單 ----------
+  function setupLeaveForm() {
+    const dialog = el("leaveDialog");
+    const form = el("leaveForm");
+    const addBtn = el("addLeaveBtn");
+    const status = el("formStatus");
+
+    if (!cfg.SCRIPT_URL) {
+      addBtn.disabled = true;
+      addBtn.title = "尚未設定 config.js 的 SCRIPT_URL，暫時無法從網頁送出請假申請";
+    }
+
+    addBtn.addEventListener("click", () => {
+      form.reset();
+      status.hidden = true;
+      status.className = "form-status";
+      const todayStr = toDateInputValue(new Date());
+      el("fStart").value = todayStr;
+      el("fEnd").value = todayStr;
+      dialog.showModal();
+      el("fName").focus();
+    });
+
+    el("cancelLeaveBtn").addEventListener("click", () => dialog.close());
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const name = el("fName").value.trim();
+      const start = el("fStart").value;
+      const end = el("fEnd").value;
+      const type = el("fType").value;
+      const note = el("fNote").value.trim();
+
+      if (!name || !start || !end) {
+        setStatus(status, "姓名、開始日期、結束日期為必填", "error");
+        return;
+      }
+      if (end < start) {
+        setStatus(status, "結束日期不能早於開始日期", "error");
+        return;
+      }
+
+      const submitBtn = el("submitLeaveBtn");
+      submitBtn.disabled = true;
+      setStatus(status, "送出中…", "");
+
+      try {
+        const result = await submitLeave({ name, start, end, type, note });
+        if (!result.ok) throw new Error(result.error || "送出失敗");
+        setStatus(status, "已送出！月曆更新中…", "success");
+        await loadFromSheet();
+        render();
+        setTimeout(() => dialog.close(), 900);
+      } catch (err) {
+        setStatus(status, "送出失敗：" + err.message, "error");
+      } finally {
+        submitBtn.disabled = false;
+      }
+    });
+  }
+
+  function setStatus(el, text, kind) {
+    el.hidden = false;
+    el.textContent = text;
+    el.className = "form-status" + (kind ? " " + kind : "");
+  }
+
+  function toDateInputValue(d) {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }
+
+  async function submitLeave(payload) {
+    const res = await fetch(cfg.SCRIPT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
   }
 
   // ---------- download ----------
