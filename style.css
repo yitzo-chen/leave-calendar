@@ -351,6 +351,7 @@ main { padding: 20px 28px 40px; max-width: 1180px; margin: 0 auto; }
 .pf-checkbox-inline input { width: auto; padding: 0; flex: none; }
 .pf-section-label { margin: 2px 0 -4px; font-size: 13px; color: var(--text-muted); }
 .pf-datetime-row { display: grid; grid-template-columns: minmax(0,1.4fr) minmax(0,1fr) minmax(0,.8fr) minmax(0,.8fr); gap: 8px; }
+.pf-datetime-row-3 { grid-template-columns: minmax(0,1.6fr) minmax(0,1fr) minmax(0,1fr); }
 .pf-datetime-row input, .pf-datetime-row select {
   font: inherit; font-size: 14px; color: var(--text);
   background: var(--surface-2); border: 1px solid var(--border);
@@ -359,6 +360,7 @@ main { padding: 20px 28px 40px; max-width: 1180px; margin: 0 auto; }
 }
 @media (max-width: 480px) {
   .pf-datetime-row { grid-template-columns: minmax(0,1fr) minmax(0,1fr); }
+  .pf-datetime-row-3 { grid-template-columns: minmax(0,1fr) minmax(0,1fr) minmax(0,1fr); }
 }
 .leave-dialog textarea {
   font: inherit; font-size: 14px; color: var(--text);

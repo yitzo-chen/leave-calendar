@@ -464,8 +464,8 @@
       status.hidden = true;
 
       const type = typeInput.value;
-      const startText = formatZhDateTime(startDate, el("pfStartAmpm").value, el("pfStartHour").value, el("pfStartMin").value);
-      const endText = formatZhDateTime(endDate, el("pfEndAmpm").value, el("pfEndHour").value, el("pfEndMin").value);
+      const startText = formatZhDateTime(startDate, el("pfStartHour").value, el("pfStartMin").value);
+      const endText = formatZhDateTime(endDate, el("pfEndHour").value, el("pfEndMin").value);
 
       el("pfOutName").textContent = name;
       el("pfOutSite").textContent = site || "－";
@@ -496,10 +496,10 @@
     return `${y}年${Number(m)}月${Number(d)}日`;
   }
 
-  function formatZhDateTime(dateStr, ampm, hour, minute) {
-    const h = String(hour || "").padStart(1, "0") || "0";
+  function formatZhDateTime(dateStr, hour, minute) {
+    const h = String(hour === "" ? "0" : hour);
     const m = String(minute || "0").padStart(2, "0");
-    return `${formatZhDate(dateStr)} ${ampm}${h}時${m}分`;
+    return `${formatZhDate(dateStr)} ${h}時${m}分`;
   }
 
   // ---------- download ----------
