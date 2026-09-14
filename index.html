@@ -134,15 +134,17 @@
     </fieldset>
     <p class="field-hint">婚假／病假／喪假請另外檢附證明文件，這裡不處理附件。</p>
 
-    <p class="pf-section-label">請假起（24小時制）：</p>
-    <div class="pf-datetime-row pf-datetime-row-3">
+    <p class="pf-section-label">請假起（時分為24小時制，上午/下午僅作跨日註記用）：</p>
+    <div class="pf-datetime-row">
       <input id="pfStartDate" type="date" required>
+      <select id="pfStartAmpm"><option value="上午" selected>上午</option><option value="下午">下午</option></select>
       <input id="pfStartHour" type="number" min="0" max="23" placeholder="時" value="8">
       <input id="pfStartMin" type="number" min="0" max="59" placeholder="分" value="0">
     </div>
-    <p class="pf-section-label">請假迄（24小時制）：</p>
-    <div class="pf-datetime-row pf-datetime-row-3">
+    <p class="pf-section-label">請假迄（時分為24小時制，上午/下午僅作跨日註記用）：</p>
+    <div class="pf-datetime-row">
       <input id="pfEndDate" type="date" required>
+      <select id="pfEndAmpm"><option value="上午">上午</option><option value="下午" selected>下午</option></select>
       <input id="pfEndHour" type="number" min="0" max="23" placeholder="時" value="17">
       <input id="pfEndMin" type="number" min="0" max="59" placeholder="分" value="0">
     </div>

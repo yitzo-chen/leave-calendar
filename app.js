@@ -464,8 +464,8 @@
       status.hidden = true;
 
       const type = typeInput.value;
-      const startText = formatZhDateTime(startDate, el("pfStartHour").value, el("pfStartMin").value);
-      const endText = formatZhDateTime(endDate, el("pfEndHour").value, el("pfEndMin").value);
+      const startText = formatZhDateTime(startDate, el("pfStartAmpm").value, el("pfStartHour").value, el("pfStartMin").value);
+      const endText = formatZhDateTime(endDate, el("pfEndAmpm").value, el("pfEndHour").value, el("pfEndMin").value);
 
       el("pfOutName").textContent = name;
       el("pfOutSite").textContent = site || "－";
@@ -496,10 +496,12 @@
     return `${y}年${Number(m)}月${Number(d)}日`;
   }
 
-  function formatZhDateTime(dateStr, hour, minute) {
+  // ampm 只是跨日註記用的文字提示，跟 hour（24小時制，0-23）彼此獨立、
+  // 不會互相驗證或換算——方便標註「這是跨到隔天的上午」這類情境。
+  function formatZhDateTime(dateStr, ampm, hour, minute) {
     const h = String(hour === "" ? "0" : hour);
     const m = String(minute || "0").padStart(2, "0");
-    return `${formatZhDate(dateStr)} ${h}時${m}分`;
+    return `${formatZhDate(dateStr)}（${ampm}）${h}時${m}分`;
   }
 
   // ---------- download ----------
