@@ -265,6 +265,20 @@ function doGet(e) {
     return respond({ ok: true, totals: totals });
   }
 
+  if (action === "reporters") {
+    var headerSheet3 = ss.getSheetByName(SHEET_HEADER);
+    var lastRow3 = headerSheet3.getLastRow();
+    var names = [];
+    if (lastRow3 >= 2) {
+      var seen = {};
+      headerSheet3.getRange(2, 9, lastRow3 - 1, 1).getValues().forEach(function (r) {
+        var n = String(r[0]).trim();
+        if (n && !seen[n]) { seen[n] = true; names.push(n); }
+      });
+    }
+    return respond({ ok: true, names: names });
+  }
+
   return respond({ ok: true, message: "daily-report API is running" });
 }
 
