@@ -239,6 +239,15 @@ function doGet(e) {
 
   if (action === "cumulative") {
     var upTo = String(e.parameter.upTo || "").trim();
+
+    // 材料是直接加總用量，工種/機具是「工天數」邏輯(上午+下午)/2 —— 兩種算法不同，
+    // 要先查清單分頁知道每個項目屬於哪一類，才能套對公式。
+    var listSheet = ss.getSheetByName(SHEET_LIST);
+    var listRows = listSheet.getDataRange().getValues();
+    listRows.shift();
+    var categoryByName = {};
+    listRows.forEach(function (r) { categoryByName[r[1]] = r[0]; });
+
     var recordSheet2 = ss.getSheetByName(SHEET_RECORD);
     var lastRow2 = recordSheet2.getLastRow();
     var totals = {};
@@ -248,8 +257,9 @@ function doGet(e) {
         var d = String(r[0]).trim();
         if (upTo && d > upTo) return;
         var name = r[1];
-        var workDays = (Number(r[2] || 0) + Number(r[3] || 0)) / 2;
-        totals[name] = (totals[name] || 0) + workDays;
+        var sum = Number(r[2] || 0) + Number(r[3] || 0);
+        var value = categoryByName[name] === "材料" ? sum : sum / 2;
+        totals[name] = (totals[name] || 0) + value;
       });
     }
     return respond({ ok: true, totals: totals });
