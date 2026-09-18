@@ -38,6 +38,7 @@ function setupSheets() {
   if (record.getRange(1, 1).getValue() === "") {
     record.getRange(1, 1, 1, 6).setValues([["日期", "項目名稱", "上午", "下午", "clientId", "更新時間"]]);
   }
+  record.getRange(2, 1, 998, 1).setNumberFormat("@"); // 日期欄強制純文字，避免Sheets自動轉成日期型別
 
   var header = ss.getSheetByName(SHEET_HEADER) || ss.insertSheet(SHEET_HEADER);
   if (header.getRange(1, 1).getValue() === "") {
@@ -46,6 +47,7 @@ function setupSheets() {
       "加班人員(上午)", "加班人員(下午)", "備註", "填表人", "clientId", "更新時間",
     ]]);
   }
+  header.getRange(2, 1, 998, 1).setNumberFormat("@");
 }
 
 // 工種/機具/材料清單的起始種子資料，抄自現行 Excel 日報範本的預設項目。
@@ -97,13 +99,23 @@ function clearWrongPasswordCount() {
   CacheService.getScriptCache().remove("wrongPasswordCount");
 }
 
-// ---------- 找某個 key 欄位等於指定值的列（從第2列開始），找不到回傳 -1 ----------
+// Sheets 寫入「2026-09-18」這種字串時常會自動轉成真正的日期型別，
+// 下次 getValues() 讀出來就變成 Date 物件而不是字串，直接比對字串永遠對不上。
+// 所有跟「日期」欄位有關的比對都要先過這道正規化。
+function normalizeDate(v) {
+  if (v instanceof Date) {
+    return Utilities.formatDate(v, Session.getScriptTimeZone(), "yyyy-MM-dd");
+  }
+  return String(v || "").trim();
+}
+
+// ---------- 找日期欄位等於指定值的列（從第2列開始），找不到回傳 -1 ----------
 function findRowByKey(sheet, keyCol, keyVal) {
   var lastRow = sheet.getLastRow();
   if (lastRow < 2) return -1;
   var vals = sheet.getRange(2, keyCol, lastRow - 1, 1).getValues();
   for (var i = 0; i < vals.length; i++) {
-    if (String(vals[i][0]).trim() === String(keyVal).trim()) return i + 2;
+    if (normalizeDate(vals[i][0]) === normalizeDate(keyVal)) return i + 2;
   }
   return -1;
 }
@@ -114,7 +126,7 @@ function findRecordRow(sheet, date, itemName) {
   if (lastRow < 2) return -1;
   var vals = sheet.getRange(2, 1, lastRow - 1, 2).getValues();
   for (var i = 0; i < vals.length; i++) {
-    if (String(vals[i][0]).trim() === date && String(vals[i][1]).trim() === itemName) return i + 2;
+    if (normalizeDate(vals[i][0]) === date && String(vals[i][1]).trim() === itemName) return i + 2;
   }
   return -1;
 }
@@ -231,7 +243,7 @@ function doGet(e) {
     var records = [];
     if (lastRow >= 2) {
       var rv = recordSheet.getRange(2, 1, lastRow - 1, 4).getValues();
-      records = rv.filter(function (r) { return String(r[0]).trim() === date; })
+      records = rv.filter(function (r) { return normalizeDate(r[0]) === date; })
         .map(function (r) { return { name: r[1], am: r[2], pm: r[3] }; });
     }
     return respond({ ok: true, header: header, records: records });
@@ -254,7 +266,7 @@ function doGet(e) {
     if (lastRow2 >= 2) {
       var rv2 = recordSheet2.getRange(2, 1, lastRow2 - 1, 4).getValues();
       rv2.forEach(function (r) {
-        var d = String(r[0]).trim();
+        var d = normalizeDate(r[0]);
         if (upTo && d > upTo) return;
         var name = r[1];
         var sum = Number(r[2] || 0) + Number(r[3] || 0);

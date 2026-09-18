@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title id="pageTitle">施工日報填寫系統</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23C8630A'/%3E%3Ctext x='50' y='68' font-size='50' text-anchor='middle' fill='white' font-family='Arial'%3E日%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true">日</span>
+    <div>
+      <h1 id="companyName">施工日報填寫系統</h1>
+      <p class="subtitle" id="projectName">讀取中…</p>
+    </div>
+  </div>
+</header>
+
+<div id="errorBanner" class="banner banner-error" hidden></div>
+
+<main>
+  <form id="reportForm">
+    <div class="date-bar">
+      <button type="button" id="prevDayBtn" class="icon-btn" aria-label="前一天">‹</button>
+      <input type="date" id="fDate">
+      <button type="button" id="nextDayBtn" class="icon-btn" aria-label="後一天">›</button>
+      <button type="button" id="todayBtn" class="ghost-btn">回到今天</button>
+      <span id="loadStatus" class="load-status"></span>
+    </div>
+    <p class="field-hint">切換日期會自動載入該天已送出的資料，可直接修改後重新送出（原資料會被覆蓋更新）。</p>
+
+    <section class="card">
+      <h2>基本資訊</h2>
+      <div class="field-row">
+        <label>天氣
+          <select id="fWeather">
+            <option value="晴">晴</option>
+            <option value="陰">陰</option>
+            <option value="雨">雨</option>
+          </select>
+        </label>
+        <label>施工狀況
+          <select id="fStatus">
+            <option value="施工">施工</option>
+            <option value="休息">休息</option>
+          </select>
+        </label>
+      </div>
+      <label>本日施工項目
+        <textarea id="fTodayWork" rows="3" placeholder="請逐項填寫"></textarea>
+      </label>
+      <label>預計明日施工項目
+        <textarea id="fTomorrowPlan" rows="2"></textarea>
+      </label>
+    </section>
+
+    <section class="card">
+      <h2>出工（工種）</h2>
+      <div class="item-list-head"><span></span><span>上午</span><span>下午</span><span>累計</span></div>
+      <div id="laborList" class="item-list"></div>
+    </section>
+
+    <section class="card">
+      <h2>機具</h2>
+      <div class="item-list-head"><span></span><span>上午</span><span>下午</span><span>累計</span></div>
+      <div id="equipmentList" class="item-list"></div>
+    </section>
+
+    <section class="card">
+      <h2>進場材料</h2>
+      <div class="item-list-head material"><span></span><span>當日使用</span><span>累計</span></div>
+      <div id="materialList" class="item-list"></div>
+    </section>
+
+    <section class="card">
+      <h2>加班人員／備註</h2>
+      <div class="field-row">
+        <label>加班人員（上午）
+          <input type="text" id="fOvertimeAM" placeholder="例：主任 陳易佐、粗工 2人">
+        </label>
+        <label>加班人員（下午）
+          <input type="text" id="fOvertimePM" placeholder="例：主任 陳易佐、粗工 2人">
+        </label>
+      </div>
+      <label>備註
+        <input type="text" id="fRemark" placeholder="例如：請款進度、其他事項">
+      </label>
+      <label>填表人
+        <input id="fReporter" list="reporterNames" placeholder="選擇或輸入姓名" required autocomplete="off" maxlength="20">
+        <datalist id="reporterNames"></datalist>
+      </label>
+      <label>通關密碼
+        <input id="fPassword" type="password" autocomplete="off" placeholder="向管理者索取">
+      </label>
+      <p id="passwordHint" class="field-hint">請先輸入密碼才能送出</p>
+    </section>
+
+    <div id="formStatus" class="form-status" hidden></div>
+    <div class="submit-bar">
+      <button type="submit" id="submitBtn" class="action-btn action-primary">送出／更新本日日報</button>
+    </div>
+  </form>
+</main>
+
+<footer class="pagefoot">資料即時寫入 Google 試算表「日報網頁填寫資料庫」</footer>
+
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
