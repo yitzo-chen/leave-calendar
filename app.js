@@ -292,6 +292,14 @@
     const startInput = el("fStart");
     const endInput = el("fEnd");
     const typeSelect = el("fType");
+    const passwordInput = el("fPassword");
+    const submitBtn = el("submitLeaveBtn");
+
+    // 密碼欄位空白時鎖住送出鈕，避免送出後才被後端擋下
+    function syncSubmitLock() {
+      submitBtn.disabled = passwordInput.value.trim() === "";
+    }
+    passwordInput.addEventListener("input", syncSubmitLock);
 
     // 日期選擇範圍限制在前後一年，避免手滑選到離譜的年份卻沒有任何提示
     const today = new Date();
@@ -319,6 +327,7 @@
       startInput.value = todayStr;
       endInput.value = todayStr;
       syncHalfDayEnd();
+      syncSubmitLock();
       dialog.showModal();
       el("fName").focus();
     });
@@ -343,7 +352,6 @@
         return;
       }
 
-      const submitBtn = el("submitLeaveBtn");
       submitBtn.disabled = true;
       setStatus(status, "送出中…", "");
 
