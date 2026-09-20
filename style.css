@@ -197,6 +197,89 @@ main { max-width: 720px; margin: 0 auto; padding: 20px; }
   text-align: right;
 }
 
+.add-item-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+.add-item-row input {
+  flex: 1;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 10px;
+}
+.add-item-row input:focus { outline: none; border-color: var(--accent); }
+
+.attendance-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 36px 36px 56px 56px 28px;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 0 2px 4px;
+}
+.attendance-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 36px 36px 56px 56px 28px;
+  gap: 8px;
+  align-items: center;
+  padding: 4px 2px;
+}
+.attendance-row .att-reason { grid-column: 1 / -1; }
+.attendance-row select {
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 4px;
+  width: 100%;
+}
+.attendance-row input[type="text"] {
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 8px;
+  width: 100%;
+}
+.attendance-row input[type="number"] {
+  font: inherit;
+  font-size: 13px;
+  font-family: var(--font-num);
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 4px;
+  width: 100%;
+  text-align: center;
+}
+.attendance-row input[type="checkbox"] { justify-self: center; width: 18px; height: 18px; }
+.attendance-row .remove-btn {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 15px;
+}
+.attendance-row .remove-btn:hover { color: var(--danger); }
+
+@media (max-width: 520px) {
+  /* 手機寬度：姓名獨佔一行，勾選與加班時數在下一行，避免姓名欄被擠到只剩一個字 */
+  .attendance-head,
+  .attendance-row { grid-template-columns: repeat(4, minmax(0, 1fr)) 28px; }
+  .attendance-head span:first-child { display: none; }
+  .attendance-row .att-name { grid-column: 1 / -1; }
+}
+
 .form-status {
   font-size: 13px;
   padding: 10px 12px;
@@ -231,4 +314,48 @@ main { max-width: 720px; margin: 0 auto; padding: 20px; }
   color: var(--text-muted);
   font-size: 12px;
   padding: 8px 0 32px;
+}
+
+/* ---------- 日報列印範本（平時隱藏，只有列印時顯示；比照「日報格式.xlsx」的雙欄版面） ---------- */
+.print-report { display: none; }
+.print-report table { width: 100%; border-collapse: collapse; font-size: 10.5px; color: #000; margin-bottom: 3px; }
+.print-report td, .print-report th { border: 1px solid #000; padding: 2px 5px; vertical-align: top; text-align: left; line-height: 1.3; }
+.print-report .pr-company { text-align: center; font-size: 12px; font-weight: 700; }
+.print-report .pr-title { text-align: center; font-size: 16px; font-weight: 700; letter-spacing: .25em; text-indent: .25em; padding: 4px 0; }
+.pr-half { width: 50%; }
+.pr-checkbox { display: inline-block; min-width: 12px; font-weight: 700; }
+
+.pr-items th { background: #f0f0f0; text-align: center; font-weight: 700; }
+.pr-items td:first-child { width: 46%; }
+.pr-items td:not(:first-child), .pr-items th:not(:first-child) { text-align: center; width: 18%; }
+
+.pr-twocol { display: flex; margin-bottom: 3px; }
+.pr-col-left { flex: 0 0 40%; }
+.pr-col-left table { margin-bottom: 0; }
+.pr-col-right { flex: 1; }
+.pr-col-right table { height: 100%; }
+
+.pr-notebox { border: 1px solid #000; border-left: none; height: 100%; display: flex; flex-direction: column; }
+.pr-notebox .pr-label-cell { flex: none; }
+.pr-notebox .pr-text-cell { flex: 1; border-top: 1px solid #000; }
+
+.pr-people { table-layout: fixed; }
+.pr-people td, .pr-people th { overflow-wrap: anywhere; word-break: break-all; }
+.pr-people th { background: #f0f0f0; font-weight: 700; font-size: 10px; padding: 2px 3px; border: 1px solid #000; }
+.pr-people td { font-size: 10px; padding: 1px 3px; border: 1px solid #000; height: 16px; text-align: center; }
+.pr-people-shift, .pr-people-label { text-align: center; font-weight: 700; background: #f0f0f0; }
+.pr-people-shift { width: 8%; }
+
+.pr-label-cell { font-weight: 700; background: #f0f0f0; padding: 2px 5px; font-size: 10.5px; }
+.pr-text-cell { white-space: pre-line; padding: 2px 5px; font-size: 10.5px; min-height: 18px; }
+.pr-remark-box { border: 1px solid #000; margin-bottom: 3px; min-height: 60px; display: flex; flex-direction: column; }
+.pr-remark-box .pr-text-cell { flex: 1; border-top: 1px solid #000; }
+
+.pr-sign-row td { height: 46px; text-align: center; font-weight: 700; vertical-align: top; padding-top: 4px; }
+
+@media print {
+  @page { size: A4; margin: 8mm; }
+  body.printing-report > *:not(.print-report) { display: none !important; }
+  body.printing-report .print-report { display: block; }
+  body.printing-report { background: #fff; }
 }

@@ -8,6 +8,7 @@ var SHEET_LIST = "工種機具材料清單";
 var SHEET_RECORD = "日報記錄";
 var SHEET_HEADER = "日報頭";
 var SHEET_BASIC = "基本資料";
+var SHEET_ATTENDANCE = "本工出勤";
 
 // ---------- 一次性設定：建立所有分頁結構（重複執行不會清空既有資料，只補齊缺的分頁/表頭） ----------
 function setupSheets() {
@@ -41,13 +42,35 @@ function setupSheets() {
   record.getRange(2, 1, 998, 1).setNumberFormat("@"); // 日期欄強制純文字，避免Sheets自動轉成日期型別
 
   var header = ss.getSheetByName(SHEET_HEADER) || ss.insertSheet(SHEET_HEADER);
+  // 舊版(11欄，含「加班人員上午/下午」)遷移成新版(9欄，加班改用獨立的「本工出勤」分頁)
+  if (header.getRange(1, 6).getValue() === "加班人員(上午)") {
+    header.getRange(1, 1, 1, 11).clearContent();
+    header.getRange(1, 1).setValue(""); // 觸發下面的補建
+  }
   if (header.getRange(1, 1).getValue() === "") {
-    header.getRange(1, 1, 1, 11).setValues([[
+    header.getRange(1, 1, 1, 9).setValues([[
       "日期", "天氣", "施工狀況", "本日施工項目", "預計明日施工項目",
-      "加班人員(上午)", "加班人員(下午)", "備註", "填表人", "clientId", "更新時間",
+      "備註", "填表人", "clientId", "更新時間",
     ]]);
   }
+  // 主任/工安的上午/下午姓名，補在最後4欄（不動既有欄位順序，舊資料不用遷移）
+  if (header.getRange(1, 10).getValue() === "") {
+    header.getRange(1, 10, 1, 4).setValues([["主任(上午)", "主任(下午)", "工安(上午)", "工安(下午)"]]);
+  }
   header.getRange(2, 1, 998, 1).setNumberFormat("@");
+
+  var attendance = ss.getSheetByName(SHEET_ATTENDANCE) || ss.insertSheet(SHEET_ATTENDANCE);
+  // 舊版(8欄「加班時數＋備註」)遷移成新版(9欄「上午加班＋下午加班＋加班原因」)。
+  // 只重寫表頭，舊資料列不搬移；正式資料庫此分頁目前是空的，若有舊資料需自行處理。
+  if (attendance.getRange(1, 5).getValue() === "加班時數") {
+    attendance.getRange(1, 1, 1, 9).clearContent();
+  }
+  if (attendance.getRange(1, 1).getValue() === "") {
+    attendance.getRange(1, 1, 1, 9).setValues([[
+      "日期", "人員名稱", "上午", "下午", "上午加班", "下午加班", "加班原因", "clientId", "更新時間",
+    ]]);
+  }
+  attendance.getRange(2, 1, 998, 1).setNumberFormat("@");
 }
 
 // 工種/機具/材料清單的起始種子資料，抄自現行 Excel 日報範本的預設項目。
@@ -99,6 +122,21 @@ function clearWrongPasswordCount() {
   CacheService.getScriptCache().remove("wrongPasswordCount");
 }
 
+// 沒設定 SUBMIT_PASSWORD 指令碼屬性時一律放行(測試期間)；設定了才擋密碼+錯誤鎖定。
+function verifyPassword(password) {
+  var requiredPassword = PropertiesService.getScriptProperties().getProperty("SUBMIT_PASSWORD");
+  if (!requiredPassword) return { ok: true };
+  if (isSubmitLocked()) {
+    return { ok: false, error: "密碼錯誤次數過多，已暫時鎖定送出功能，請 10 分鐘後再試" };
+  }
+  if (password !== requiredPassword) {
+    recordWrongPassword();
+    return { ok: false, error: "通關密碼錯誤，請向管理者確認" };
+  }
+  clearWrongPasswordCount();
+  return { ok: true };
+}
+
 // Sheets 寫入「2026-09-18」這種字串時常會自動轉成真正的日期型別，
 // 下次 getValues() 讀出來就變成 Date 物件而不是字串，直接比對字串永遠對不上。
 // 所有跟「日期」欄位有關的比對都要先過這道正規化。
@@ -120,13 +158,13 @@ function findRowByKey(sheet, keyCol, keyVal) {
   return -1;
 }
 
-// 找「日期+項目名稱」都相符的列（日報記錄用，兩欄複合鍵）
-function findRecordRow(sheet, date, itemName) {
+// 找「日期+第二欄」都相符的列（日報記錄/本工出勤共用，兩欄複合鍵）
+function findRecordRow(sheet, date, key2) {
   var lastRow = sheet.getLastRow();
   if (lastRow < 2) return -1;
   var vals = sheet.getRange(2, 1, lastRow - 1, 2).getValues();
   for (var i = 0; i < vals.length; i++) {
-    if (normalizeDate(vals[i][0]) === date && String(vals[i][1]).trim() === itemName) return i + 2;
+    if (normalizeDate(vals[i][0]) === date && String(vals[i][1]).trim() === key2) return i + 2;
   }
   return -1;
 }
@@ -144,26 +182,49 @@ function doPost(e) {
   }
   try {
     var data = JSON.parse(e.postData.contents);
-    var date = String(data.date || "").trim();
-    var password = String(data.password || "");
-    var clientId = String(data.clientId || "").trim();
-    var h = data.header || {};
-    var items = Array.isArray(data.items) ? data.items : [];
+    var action = data.action || "submit";
+    var pwCheck = verifyPassword(String(data.password || ""));
+    if (!pwCheck.ok) return respond(pwCheck);
 
     var ss = SpreadsheetApp.getActiveSpreadsheet();
-    var requiredPassword = PropertiesService.getScriptProperties().getProperty("SUBMIT_PASSWORD");
-    if (requiredPassword) {
-      if (isSubmitLocked()) {
-        return respond({ ok: false, error: "密碼錯誤次數過多，已暫時鎖定送出功能，請 10 分鐘後再試" });
+
+    // ---- 新增工種/機具/材料項目（給表單上的「＋新增項目」按鈕用） ----
+    if (action === "addItem") {
+      var category = String(data.category || "").trim();
+      var name = String(data.name || "").trim();
+      if (["工種", "機具", "材料"].indexOf(category) === -1) {
+        return respond({ ok: false, error: "類別錯誤" });
       }
-      if (password !== requiredPassword) {
-        recordWrongPassword();
-        return respond({ ok: false, error: "通關密碼錯誤，請向管理者確認" });
+      if (!name) return respond({ ok: false, error: "請輸入項目名稱" });
+
+      var listSheet = ss.getSheetByName(SHEET_LIST);
+      var listRows = listSheet.getDataRange().getValues();
+      for (var i = 1; i < listRows.length; i++) {
+        if (String(listRows[i][1]).trim() === name) {
+          if (String(listRows[i][3]).trim().toUpperCase() === "TRUE") {
+            return respond({ ok: false, error: "項目已存在" });
+          }
+          listSheet.getRange(i + 1, 4).setValue("TRUE"); // 曾被停用的項目：重新啟用
+          return respond({ ok: true });
+        }
       }
-      clearWrongPasswordCount();
+      listSheet.appendRow([category, sanitizeCell(name), "", "TRUE"]);
+      return respond({ ok: true });
     }
 
+    // ---- 送出／更新當天日報（原本邏輯） ----
+    var date = String(data.date || "").trim();
+    var clientId = sanitizeCell(String(data.clientId || "").trim());
+    var h = data.header || {};
+    var items = Array.isArray(data.items) ? data.items : [];
+    var attendance = Array.isArray(data.attendance) ? data.attendance : [];
+    // 使用者在畫面上「明確」清空/移除的項目與人員（前端比對載入時的資料算出來）。
+    // 只有這兩份名單裡的資料才會被刪除，沒被列出的既有資料一律不動，避免舊頁面或兩人同天分填時互相蓋掉。
+    var clearItems = Array.isArray(data.clearItems) ? data.clearItems : [];
+    var removeAttendance = Array.isArray(data.removeAttendance) ? data.removeAttendance : [];
+
     if (!date) return respond({ ok: false, error: "缺少日期" });
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return respond({ ok: false, error: "日期格式錯誤" });
 
     var now = new Date();
 
@@ -176,29 +237,61 @@ function doPost(e) {
       sanitizeCell(String(h.status || "")),
       sanitizeCell(String(h.todayWork || "")),
       sanitizeCell(String(h.tomorrowPlan || "")),
-      sanitizeCell(String(h.overtimeAM || "")),
-      sanitizeCell(String(h.overtimePM || "")),
       sanitizeCell(String(h.remark || "")),
       sanitizeCell(String(h.reporter || "")),
       clientId,
       now,
+      sanitizeCell(String(h.directorAm || "")),
+      sanitizeCell(String(h.directorPm || "")),
+      sanitizeCell(String(h.safetyAm || "")),
+      sanitizeCell(String(h.safetyPm || "")),
     ];
     if (hRow === -1) hRow = headerSheet.getLastRow() + 1;
     headerSheet.getRange(hRow, 1, 1, hVals.length).setValues([hVals]);
 
-    // ---- upsert 日報記錄：逐一項目，同一天同一項目已有資料就覆蓋，沒有就新增 ----
+    // ---- 日報記錄：先刪除使用者明確清空的項目，再逐一 upsert（同一天同一項目已有資料就覆蓋，沒有就新增） ----
     var recordSheet = ss.getSheetByName(SHEET_RECORD);
-    for (var i = 0; i < items.length; i++) {
-      var it = items[i];
-      var name = String(it.name || "").trim();
-      if (!name) continue;
+    for (var c = 0; c < clearItems.length; c++) {
+      var clearName = String(clearItems[c] || "").trim();
+      if (!clearName) continue;
+      var cRow = findRecordRow(recordSheet, date, clearName);
+      if (cRow !== -1) recordSheet.deleteRow(cRow);
+    }
+    for (var j = 0; j < items.length; j++) {
+      var it = items[j];
+      var itName = String(it.name || "").trim();
+      if (!itName) continue;
       var am = Number(it.am || 0);
       var pm = Number(it.pm || 0);
       if (am === 0 && pm === 0) continue; // 沒填數字的項目不寫入，避免資料表被灌滿0
-      var rRow = findRecordRow(recordSheet, date, name);
-      var rVals = [date, name, am, pm, clientId, now];
+      var rRow = findRecordRow(recordSheet, date, itName);
+      var rVals = [date, sanitizeCell(itName), am, pm, clientId, now];
       if (rRow === -1) rRow = recordSheet.getLastRow() + 1;
       recordSheet.getRange(rRow, 1, 1, rVals.length).setValues([rVals]);
+    }
+
+    // ---- 本工出勤：先刪除使用者明確移除的人，再逐一 upsert（同一天同一人已有資料就覆蓋，沒有就新增） ----
+    var attSheet = ss.getSheetByName(SHEET_ATTENDANCE);
+    for (var r = 0; r < removeAttendance.length; r++) {
+      var removeName = String(removeAttendance[r] || "").trim();
+      if (!removeName) continue;
+      var rmRow = findRecordRow(attSheet, date, removeName);
+      if (rmRow !== -1) attSheet.deleteRow(rmRow);
+    }
+    for (var k = 0; k < attendance.length; k++) {
+      var a = attendance[k];
+      var aName = String(a.name || "").trim();
+      if (!aName) continue;
+      var aRow = findRecordRow(attSheet, date, aName);
+      var aVals = [
+        date, sanitizeCell(aName),
+        a.am ? "V" : "", a.pm ? "V" : "",
+        Number(a.amHours || 0), Number(a.pmHours || 0),
+        sanitizeCell(String(a.reason || "")),
+        clientId, now,
+      ];
+      if (aRow === -1) aRow = attSheet.getLastRow() + 1;
+      attSheet.getRange(aRow, 1, 1, aVals.length).setValues([aVals]);
     }
 
     return respond({ ok: true, date: date });
@@ -232,10 +325,11 @@ function doGet(e) {
     var hRow = findRowByKey(headerSheet, 1, date);
     var header = null;
     if (hRow !== -1) {
-      var hv = headerSheet.getRange(hRow, 1, 1, 9).getValues()[0];
+      var hv = headerSheet.getRange(hRow, 1, 1, 13).getValues()[0];
       header = {
         date: hv[0], weather: hv[1], status: hv[2], todayWork: hv[3], tomorrowPlan: hv[4],
-        overtimeAM: hv[5], overtimePM: hv[6], remark: hv[7], reporter: hv[8],
+        remark: hv[5], reporter: hv[6],
+        directorAm: hv[9], directorPm: hv[10], safetyAm: hv[11], safetyPm: hv[12],
       };
     }
     var recordSheet = ss.getSheetByName(SHEET_RECORD);
@@ -246,7 +340,15 @@ function doGet(e) {
       records = rv.filter(function (r) { return normalizeDate(r[0]) === date; })
         .map(function (r) { return { name: r[1], am: r[2], pm: r[3] }; });
     }
-    return respond({ ok: true, header: header, records: records });
+    var attSheet = ss.getSheetByName(SHEET_ATTENDANCE);
+    var attLastRow = attSheet.getLastRow();
+    var attendance = [];
+    if (attLastRow >= 2) {
+      var av = attSheet.getRange(2, 1, attLastRow - 1, 7).getValues();
+      attendance = av.filter(function (r) { return normalizeDate(r[0]) === date; })
+        .map(function (r) { return { name: r[1], am: r[2] === "V", pm: r[3] === "V", amHours: r[4], pmHours: r[5], reason: r[6] }; });
+    }
+    return respond({ ok: true, header: header, records: records, attendance: attendance });
   }
 
   if (action === "cumulative") {
@@ -283,12 +385,26 @@ function doGet(e) {
     var names = [];
     if (lastRow3 >= 2) {
       var seen = {};
-      headerSheet3.getRange(2, 9, lastRow3 - 1, 1).getValues().forEach(function (r) {
+      headerSheet3.getRange(2, 7, lastRow3 - 1, 1).getValues().forEach(function (r) {
         var n = String(r[0]).trim();
         if (n && !seen[n]) { seen[n] = true; names.push(n); }
       });
     }
     return respond({ ok: true, names: names });
+  }
+
+  if (action === "peopleNames") {
+    var attSheet3 = ss.getSheetByName(SHEET_ATTENDANCE);
+    var attLastRow3 = attSheet3.getLastRow();
+    var pNames = [];
+    if (attLastRow3 >= 2) {
+      var seen2 = {};
+      attSheet3.getRange(2, 2, attLastRow3 - 1, 1).getValues().forEach(function (r) {
+        var n = String(r[0]).trim();
+        if (n && !seen2[n]) { seen2[n] = true; pNames.push(n); }
+      });
+    }
+    return respond({ ok: true, names: pNames });
   }
 
   return respond({ ok: true, message: "daily-report API is running" });

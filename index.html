@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title id="pageTitle">施工日報填寫系統</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23C8630A'/%3E%3Ctext x='50' y='68' font-size='50' text-anchor='middle' fill='white' font-family='Arial'%3E日%3C/text%3E%3C/svg%3E">
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=20260920d">
 </head>
 <body>
 <header class="topbar">
@@ -27,6 +27,7 @@
       <input type="date" id="fDate">
       <button type="button" id="nextDayBtn" class="icon-btn" aria-label="後一天">›</button>
       <button type="button" id="todayBtn" class="ghost-btn">回到今天</button>
+      <button type="button" id="printReportBtn" class="ghost-btn">🖨️ 列印日報</button>
       <span id="loadStatus" class="load-status"></span>
     </div>
     <p class="field-hint">切換日期會自動載入該天已送出的資料，可直接修改後重新送出（原資料會被覆蓋更新）。</p>
@@ -60,32 +61,54 @@
       <h2>出工（工種）</h2>
       <div class="item-list-head"><span></span><span>上午</span><span>下午</span><span>累計</span></div>
       <div id="laborList" class="item-list"></div>
+      <div class="add-item-row">
+        <input type="text" id="laborNewName" placeholder="新增工種名稱">
+        <button type="button" id="laborAddBtn" class="ghost-btn">＋新增項目</button>
+      </div>
     </section>
 
     <section class="card">
       <h2>機具</h2>
       <div class="item-list-head"><span></span><span>上午</span><span>下午</span><span>累計</span></div>
       <div id="equipmentList" class="item-list"></div>
+      <div class="add-item-row">
+        <input type="text" id="equipmentNewName" placeholder="新增機具名稱">
+        <button type="button" id="equipmentAddBtn" class="ghost-btn">＋新增項目</button>
+      </div>
     </section>
 
     <section class="card">
       <h2>進場材料</h2>
       <div class="item-list-head material"><span></span><span>當日使用</span><span>累計</span></div>
       <div id="materialList" class="item-list"></div>
+      <div class="add-item-row">
+        <input type="text" id="materialNewName" placeholder="新增材料名稱">
+        <button type="button" id="materialAddBtn" class="ghost-btn">＋新增項目</button>
+      </div>
     </section>
 
     <section class="card">
-      <h2>加班人員／備註</h2>
+      <h2>主任／工安</h2>
       <div class="field-row">
-        <label>加班人員（上午）
-          <input type="text" id="fOvertimeAM" placeholder="例：主任 陳易佐、粗工 2人">
-        </label>
-        <label>加班人員（下午）
-          <input type="text" id="fOvertimePM" placeholder="例：主任 陳易佐、粗工 2人">
-        </label>
+        <label>主任<input id="fDir" type="text" maxlength="20" autocomplete="off"></label>
+        <label>工安<input id="fSafe" type="text" maxlength="20" autocomplete="off"></label>
       </div>
+    </section>
+
+    <section class="card">
+      <h2>本工人員出勤</h2>
+      <div class="attendance-head">
+        <span>人員名稱</span><span>上午</span><span>下午</span><span>上午加班</span><span>下午加班</span><span></span>
+      </div>
+      <div id="attendanceList"></div>
+      <button type="button" id="addAttendanceBtn" class="ghost-btn">＋新增人員</button>
+      <datalist id="peopleNames"></datalist>
+    </section>
+
+    <section class="card">
+      <h2>備註</h2>
       <label>備註
-        <input type="text" id="fRemark" placeholder="例如：請款進度、其他事項">
+        <textarea id="fRemark" rows="3" placeholder="例如：請款進度、其他事項"></textarea>
       </label>
       <label>填表人
         <input id="fReporter" list="reporterNames" placeholder="選擇或輸入姓名" required autocomplete="off" maxlength="20">
@@ -106,7 +129,98 @@
 
 <footer class="pagefoot">資料即時寫入 Google 試算表「日報網頁填寫資料庫」</footer>
 
-<script src="config.js"></script>
-<script src="app.js"></script>
+<!--
+  列印範本比照「D:\洲際液化天然氣接收站AI\日報格式.xlsx」實際欄位配置刻出來（用 openpyxl 讀取
+  該檔案的合併儲存格與標籤位置比對），不是憑印象刻的。版面上有兩處無法從資料直接對應，
+  已跟使用者確認過處理方式：
+  1. 人員/加班區塊：主任/工安為上午下午各填一個姓名；「本工」為固定文字；人員欄依本工出勤
+     的上午/下午勾選分區列出，加班時數與加班原因印在該人員同一列（範例加班欄右側原有4個
+     小格，合併成單一「加班原因」欄，總寬度不變）。
+  2. 範例第46~51列有一整塊沒有任何文字標籤的格線，判斷是原始表格「備註」欄位的所在位置，
+     故拿來放備註文字（做成單一邊框方塊而非重建看不出用途的細格線，功能對等但非逐格複製）。
+-->
+<div id="printDailyReport" class="print-report">
+  <table class="pr-head">
+    <tbody>
+      <tr><td colspan="2" class="pr-company" id="prCompany"></td></tr>
+      <tr><td colspan="2" class="pr-title">施　工　日　誌　／　日　報　表</td></tr>
+      <tr><td colspan="2">業主：<span id="prOwner"></span></td></tr>
+      <tr><td colspan="2">工程名稱：<span id="prProject"></span></td></tr>
+      <tr>
+        <td class="pr-half">合約金額：<span id="prContract"></span></td>
+        <td class="pr-half">日期：<span id="prYear"></span>年<span id="prMonth"></span>月<span id="prDay"></span>日</td>
+      </tr>
+      <tr>
+        <td class="pr-half">開工日期：<span id="prStartDate"></span></td>
+        <td class="pr-half">
+          天氣：<span id="prChkSun" class="pr-checkbox"></span>晴
+          <span id="prChkCloud" class="pr-checkbox"></span>陰
+          <span id="prChkRain" class="pr-checkbox"></span>雨
+          施工狀況：<span id="prChkWork" class="pr-checkbox"></span>施工
+          <span id="prChkRest" class="pr-checkbox"></span>休息
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="pr-twocol">
+    <div class="pr-col-left">
+      <table class="pr-items">
+        <thead><tr><th>工種</th><th>上午</th><th>下午</th><th>累計</th></tr></thead>
+        <tbody id="prLaborRows"></tbody>
+      </table>
+      <table class="pr-items">
+        <thead><tr><th>機具</th><th>上午</th><th>下午</th><th>累計</th></tr></thead>
+        <tbody id="prEquipmentRows"></tbody>
+      </table>
+    </div>
+    <div class="pr-col-right">
+      <div class="pr-notebox">
+        <div class="pr-label-cell">本日施工項目</div>
+        <div class="pr-text-cell" id="prTodayWork"></div>
+        <div class="pr-label-cell">預計明日施工項目</div>
+        <div class="pr-text-cell" id="prTomorrowPlan"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="pr-twocol">
+    <div class="pr-col-left">
+      <table class="pr-items">
+        <thead><tr><th>材料</th><th>當日使用</th><th>累計</th></tr></thead>
+        <tbody id="prMaterialRows"></tbody>
+      </table>
+    </div>
+    <div class="pr-col-right">
+      <table class="pr-people">
+        <colgroup>
+          <col style="width:8%"><col style="width:9%"><col style="width:15%"><col style="width:9%"><col style="width:16%"><col style="width:9%"><col style="width:34%">
+        </colgroup>
+        <thead>
+          <tr><th></th><th colspan="2">主任／工安</th><th>本工</th><th>人員</th><th>加班</th><th>加班原因</th></tr>
+        </thead>
+        <tbody id="prPeopleRows"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="pr-remark-box">
+    <div class="pr-label-cell">備註</div>
+    <div class="pr-text-cell" id="prRemark"></div>
+  </div>
+
+  <table class="pr-sign">
+    <tbody>
+      <tr class="pr-sign-row">
+        <td>董事長</td>
+        <td>經理</td>
+        <td>填表人：<span id="prReporter"></span></td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<script src="config.js?v=20260920d"></script>
+<script src="app.js?v=20260920d"></script>
 </body>
 </html>
