@@ -118,13 +118,13 @@ async function toBuf(parts) {
   const buf = await toBuf(wb1);
   const x = XLSX.read(buf);
   T("R13", "SheetJS 讀得到 3 個分頁且順序正確", () => eq(x.SheetNames, ["115.9.18", "115.9.19", "115.9.21"]));
-  T("R14", "SheetJS 讀回數值：115.9.19 公司工上午2/下午2/累計3、日期 115/9/19", () => {
+  T("R14", "SheetJS 讀回數值：115.9.19 公司工上午2/下午2/累計3、日期「日期：115」/9/19", () => {
     const s = x.Sheets["115.9.19"];
-    return eq([s.A8.v, s.D8.v, s.E8.v, s.F8.v, s.K5.v, s.N5.v, s.P5.v], ["公司工", 2, 2, 3, 115, 9, 19]);
+    return eq([s.A8.v, s.D8.v, s.E8.v, s.F8.v, s.J5.v, s.N5.v, s.P5.v], ["公司工", 2, 2, 3, "日期：115", 9, 19]);
   });
-  T("R15", "SheetJS 合併數 173、含備註區 A46:S52", () => {
+  T("R15", "SheetJS 合併數 174、含備註區 A46:S52 與日期 J5:L5", () => {
     const m = x.Sheets["115.9.19"]["!merges"].map((r) => XLSX.utils.encode_range(r));
-    return eq([m.length, m.includes("A46:S52")], [173, true]);
+    return eq([m.length, m.includes("A46:S52"), m.includes("J5:L5")], [174, true, true]);
   });
   T("R16", "檔案大小合理（3 天 < 40KB）", () => buf.length < 40000 || buf.length);
 

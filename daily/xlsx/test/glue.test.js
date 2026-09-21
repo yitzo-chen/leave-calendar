@@ -99,11 +99,11 @@ const F = (env) => Object.values(env.state.files).find((f) => f.name === "施工
     e2.state.files[e2.state.props.XLSX_FILE_ID] && (e2.ctx.UrlFetchApp.fetch = () => ({ getResponseCode: () => 500, getContentText: () => "boom" }));
     try { e2.call("xlsxUpdateForDate('2026-09-20')"); return "應該要丟錯"; } catch (e) { return /HTTP 500/.test(String(e.message)) || String(e.message); }
   });
-  T("G14", "產出的 xlsx 可被 SheetJS 完整讀回（分頁數與合併數 173）", () => {
+  T("G14", "產出的 xlsx 可被 SheetJS 完整讀回（分頁數與合併數 174）", () => {
     const e2 = makeGlueEnv({ sheetsData: baseSheets(), driveFiles: { "日報範本.xlsx": TEMPLATE_BYTES } });
     e2.call("xlsxRebuildAll()");
     const wb = sheetVals(Object.values(e2.state.files).find((f) => f.name === "施工日報彙整.xlsx").bytes);
-    return eq([wb.SheetNames, wb.Sheets["115.9.18"]["!merges"].length], [["115.9.18", "115.9.20"], 173]);
+    return eq([wb.SheetNames, wb.Sheets["115.9.18"]["!merges"].length], [["115.9.18", "115.9.20"], 174]);
   });
   // 輸出檔留一份供 python 驗證
   const last = makeGlueEnv({ sheetsData: baseSheets(), driveFiles: { "日報範本.xlsx": TEMPLATE_BYTES } });

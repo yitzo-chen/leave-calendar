@@ -54,9 +54,9 @@ def rng(a, b, cols):
 
 NAME_CELLS = rng(8, 18, 'A') | rng(20, 29, 'A') | rng(31, 45, 'A')
 SHRINK_CELLS = rng(34, 45, 'MP') | {'J34', 'J37', 'J40', 'J43', 'O53'}
-STYLE_CHANGED = NAME_CELLS | SHRINK_CELLS | {'A46'}      # 預期樣式編號會變（衍生新樣式）
+STYLE_CHANGED = NAME_CELLS | SHRINK_CELLS | {'A46', 'J5'}      # 預期樣式編號會變（衍生新樣式）
 WRITTEN = (rng(8, 18, 'ADEF') | rng(20, 29, 'ADEF') | rng(31, 45, 'ADF') | rng(8, 20, 'H') | rng(22, 32, 'H')
-           | rng(34, 45, 'MOP') | {'P33', 'A1', 'A3', 'A4', 'A5', 'A6', 'K5', 'N5', 'P5', 'J6', 'J34', 'J37', 'J40', 'J43', 'L34', 'L40', 'A46', 'O53'})
+           | rng(34, 45, 'MOP') | {'P33', 'A1', 'A3', 'A4', 'A5', 'A6', 'J5', 'N5', 'P5', 'J6', 'J34', 'J37', 'J40', 'J43', 'L34', 'L40', 'A46', 'O53'})
 
 CELL = re.compile(r'<c r="([A-Z]+\d+)"((?:\s+[A-Za-z:]+="[^"]*")*)\s*(?:/>|>[\s\S]*?</c>)')
 
@@ -130,8 +130,8 @@ ws = wb[names[-1]]
 ms = {str(m) for m in ws.merged_cells.ranges}
 tms = {str(m) for m in tpl.merged_cells.ranges}
 in_note = lambda m: (lambda r: 46 <= r[1] <= 52 and r[0] >= 1 and r[2] <= 19)(__import__('openpyxl').utils.range_boundaries(m))
-expected_ms = {m for m in tms if not in_note(m)} | {'A46:S52'} | {f'P{r}:S{r}' for r in range(33, 46)}
-check(ms == expected_ms, f'合併數 {len(ms)}（預期 = 範本非備註區合併 + A46:S52 + 13 個 P:S = {len(expected_ms)}）差異 {sorted(ms ^ expected_ms)[:6]}')
+expected_ms = {m for m in tms if not in_note(m)} | {'A46:S52', 'J5:L5'} | {f'P{r}:S{r}' for r in range(33, 46)}
+check(ms == expected_ms, f'合併數 {len(ms)}（預期 = 範本非備註區合併 + A46:S52 + J5:L5 + 13 個 P:S = {len(expected_ms)}）差異 {sorted(ms ^ expected_ms)[:6]}')
 check('A46:S52' in ms and 'A46:B46' not in ms and 'Q51:R51' not in ms, '備註區併成 A46:S52，原小合併已移除')
 check(all(f'P{r}:S{r}' in ms for r in range(33, 46)), '加班原因欄 P:S 逐列合併（33–45）')
 check({'H34:H39', 'L34:L39', 'J34:K36', 'O53:S54'} <= ms, '其他範本合併保留')
@@ -158,7 +158,7 @@ def val(k):
 LONG = '樓梯防滑地磚(20*27)含黏著劑及施工損耗合計(箱)'
 exp_cells = {
     'A1': None, 'A3': '業主：中油', 'A4': '工程名稱：洲際液化天然氣接收站', 'A5': '合約金額：', 'A6': '開工日期：',
-    'K5': 115, 'N5': 9, 'P5': 20,
+    'J5': '日期：115', 'N5': 9, 'P5': 20,
     'J6': '    天氣：  □晴 □陰   ■雨   施工狀況：■施工  □休息',
     'A8': '公司工', 'D8': 4, 'E8': 4, 'A9': '模板工', 'D9': 1, 'E9': 1, 'A10': '鋼筋工(工地)', 'D10': None, 'A12': None, 'F12': None,
     'A20': '吊車', 'D20': 2, 'E20': 2,

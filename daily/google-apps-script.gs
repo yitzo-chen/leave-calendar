@@ -532,6 +532,16 @@ function doGet(e) {
     return respond({ ok: true, names: pNames });
   }
 
+  // 目前 xlsx 輸出檔（施工日報彙整.xlsx）的網址；檔案還沒產生（尚未送出過日報）時 url 為空字串
+  if (action === "xlsxUrl") {
+    try {
+      var xlsxFile = xlsxFindOutput_();
+      return respond({ ok: true, url: xlsxFile ? xlsxFile.getUrl() : "" });
+    } catch (err) {
+      return respond({ ok: false, error: String(err) });
+    }
+  }
+
   return respond({ ok: true, message: "daily-report API is running" });
 }
 

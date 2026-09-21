@@ -195,6 +195,7 @@ var XlsxBuilder = (function () {
    *  2. 工種/機具/材料名稱格：字型統一成範本多數名稱格使用的字型（原本 A9、A10 等是 8pt，其餘 12pt，看起來不一致），
    *     並加上「縮小字型以符合儲存格」，名稱太長時自動縮小而不是被截斷
    *  3. 人員姓名、主任/工安、加班原因、填表人：同樣加上縮小字型以符合
+   *  4. 日期格 J5（與 K5、L5 併成一格）：靠右對齊並縮小字型以符合，緊貼 M5 的「年」
    * @param parts 範本套件 {路徑: 文字}
    * @return 新的套件（不修改傳入的物件）
    */
@@ -234,6 +235,7 @@ var XlsxBuilder = (function () {
     shrinkRefs.forEach(function (ref) { apply(ref, "shrink", shrink); });
 
     apply("A46", "remark", { align: { horizontal: "left", vertical: "top", wrapText: "1", shrinkToFit: null } });
+    apply("J5", "date", { align: { horizontal: "right", shrinkToFit: "1", wrapText: null } });
 
     out["xl/styles.xml"] = styles;
     out["xl/worksheets/sheet1.xml"] = sheet;
@@ -323,7 +325,9 @@ var XlsxBuilder = (function () {
     xml = setCell(xml, "A4", "工程名稱：" + (b["工程名稱"] || ""));
     xml = setCell(xml, "A5", "合約金額：" + (b["合約金額（元）"] || ""));
     xml = setCell(xml, "A6", "開工日期：" + (b["開工日期（YYYY/MM/DD）"] || ""));
-    xml = setCell(xml, "K5", Number(dm[1]) - 1911);
+    // 「日期：」標籤與民國年併在 J5:L5 一格（靠右，緊貼 M5 的「年」）。原本 J5 只有 4.9 個字寬，
+    // 標籤會被 K5 的年份擋住，且 L5 是多餘的空格
+    xml = setCell(xml, "J5", "日期：" + (Number(dm[1]) - 1911));
     xml = setCell(xml, "N5", Number(dm[2]));
     xml = setCell(xml, "P5", Number(dm[3]));
     xml = setCell(xml, "J6", "    天氣：  " + box(h.weather === "晴") + "晴 " + box(h.weather === "陰") + "陰   " +
@@ -400,13 +404,14 @@ var XlsxBuilder = (function () {
     xml = setCell(xml, "A46", "備註：" + (h.remark || ""));
     xml = setCell(xml, "O53", h.reporter || "");
 
-    // 合併儲存格：備註區併成單一方塊、加班原因欄 P:S 逐列合併
+    // 合併儲存格：備註區併成單一方塊、日期 J5:L5、加班原因欄 P:S 逐列合併
     xml = replaceMerges(xml, function (refs) {
       var kept = refs.filter(function (ref) {
         var r = parseRange(ref);
         return !(r.r1 >= 46 && r.r1 <= 52 && r.c1 >= 1 && r.c2 <= 19);
       });
       kept.push("A46:S52");
+      kept.push("J5:L5");
       for (var row = 33; row <= 45; row++) kept.push("P" + row + ":S" + row);
       return kept;
     });

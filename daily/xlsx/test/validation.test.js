@@ -293,6 +293,17 @@ const rejected = (env, r, re) => (r.ok === false && (!re || re.test(r.error)) &&
     return eq([r.ok, e.rows("日報頭"), e.rows("日報記錄"), e.rows("本工出勤"), e.maxRows["日報記錄"] >= 4], [true, 1, 3, 2, true]);
   });
 
+  T("V25", "xlsxUrl：檔案尚未產生回空字串；送出日報後回檔案網址（與送出結果的 url 相同）；輸出檔被丟垃圾桶後又回空字串", () => {
+    const e = makeEnv();
+    const before = e.get({ action: "xlsxUrl" });
+    const r = e.post(sub());
+    const after = e.get({ action: "xlsxUrl" });
+    Object.values(e.state.files).forEach((f) => { if (f.name === "施工日報彙整.xlsx") f.trashed = true; });
+    const trashed = e.get({ action: "xlsxUrl" });
+    return eq([before, r.ok && r.xlsx.ok, after.ok && /^https:\/\/drive\.google\.com\//.test(after.url), after.url === r.xlsx.url, trashed],
+      [{ ok: true, url: "" }, true, true, true, { ok: true, url: "" }]);
+  });
+
   R.forEach((r) => console.log("[" + r[1] + "] " + r[0] + " " + r[2] + (r[3] ? "\n      -> " + String(r[3]).slice(0, 500) : "")));
   console.log({ total: R.length, notPass: R.filter((r) => r[1] !== "PASS").length });
 })();

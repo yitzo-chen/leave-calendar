@@ -337,6 +337,7 @@
     const warnings = Array.isArray(xlsx.warnings) ? xlsx.warnings : [];
     setStatus("已送出！xlsx 已更新" + (warnings.length ? "，但有警告：" + warnings.join("；") : ""), warnings.length ? "error" : "success");
     if (xlsx.url && /^https:\/\//.test(xlsx.url)) {
+      xlsxUrl = xlsx.url; // 檔案若被重建，網址會變；以最新一次送出的結果為準
       const a = document.createElement("a");
       a.href = xlsx.url;
       a.target = "_blank";
@@ -345,6 +346,42 @@
       box.appendChild(document.createTextNode(" "));
       box.appendChild(a);
     }
+  }
+
+  // ---------- 開啟完整試算表（雲端 xlsx 彙整檔）----------
+  let xlsxUrl = ""; // 目前已知的 xlsx 網址；尚未產生（還沒送出過日報）時為空
+
+  // 向後端查詢 xlsx 網址。回傳 { url } 或 { error }；舊版後端不認得此動作時回 error
+  async function fetchXlsxUrl() {
+    try {
+      const result = await apiGet("xlsxUrl");
+      if (!result.ok) return { error: result.error || "讀取失敗" };
+      if (typeof result.url !== "string") return { error: "後端尚未支援此功能" };
+      if (result.url && !/^https:\/\//.test(result.url)) return { error: "網址格式不正確" };
+      return { url: result.url };
+    } catch (err) {
+      return { error: "網路連線失敗" };
+    }
+  }
+
+  function flashLoadStatus(text) {
+    const status = el("loadStatus");
+    status.textContent = text;
+    setTimeout(() => { if (status.textContent === text) status.textContent = ""; }, 5000);
+  }
+
+  async function openXlsx() {
+    if (xlsxUrl) { window.open(xlsxUrl, "_blank", "noopener"); return; }
+    // 沒有快取網址時要先問後端；先開空白分頁再導向，避免非同步之後才 window.open 被瀏覽器擋掉
+    const win = window.open("", "_blank");
+    const result = await fetchXlsxUrl();
+    if (result.url) {
+      xlsxUrl = result.url;
+      if (win) { win.opener = null; win.location.href = result.url; } else window.open(result.url, "_blank", "noopener");
+      return;
+    }
+    if (win) win.close();
+    flashLoadStatus(result.error ? "無法開啟試算表：" + result.error : "試算表尚未產生，第一次送出日報後就會建立");
   }
 
   function syncSubmitLock() {
@@ -468,6 +505,8 @@
     el("equipmentAddBtn").addEventListener("click", () => addItemPrompt("機具", "equipmentNewName"));
     el("materialAddBtn").addEventListener("click", () => addItemPrompt("材料", "materialNewName"));
     el("addAttendanceBtn").addEventListener("click", () => addAttendanceRow());
+    el("openXlsxBtn").addEventListener("click", openXlsx);
+    fetchXlsxUrl().then((r) => { if (r.url) xlsxUrl = r.url; }); // 先取好網址，點擊時可直接開啟
     el("printReportBtn").addEventListener("click", () => {
       buildPrintReport();
       document.body.classList.add("printing-report");
