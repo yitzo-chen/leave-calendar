@@ -326,6 +326,27 @@
     box.className = "form-status" + (kind ? " " + kind : "");
   }
 
+  // 日報送出成功後，依後端回傳的 xlsx 更新狀態顯示；xlsx 失敗不影響日報已送出的事實
+  function showSubmitResult(xlsx) {
+    const box = el("formStatus");
+    if (!xlsx) { setStatus("已送出！", "success"); return; }
+    if (!xlsx.ok) {
+      setStatus("日報已送出，但 xlsx 更新失敗：" + (xlsx.error || "未知錯誤") + "（稍後可再送出一次重試）", "error");
+      return;
+    }
+    const warnings = Array.isArray(xlsx.warnings) ? xlsx.warnings : [];
+    setStatus("已送出！xlsx 已更新" + (warnings.length ? "，但有警告：" + warnings.join("；") : ""), warnings.length ? "error" : "success");
+    if (xlsx.url && /^https:\/\//.test(xlsx.url)) {
+      const a = document.createElement("a");
+      a.href = xlsx.url;
+      a.target = "_blank";
+      a.rel = "noopener";
+      a.textContent = "開啟 xlsx";
+      box.appendChild(document.createTextNode(" "));
+      box.appendChild(a);
+    }
+  }
+
   function syncSubmitLock() {
     const noPassword = el("fPassword").value.trim() === "";
     el("submitBtn").disabled = noPassword || !dayLoaded;
@@ -495,7 +516,7 @@
       try {
         const result = await apiPost(payload);
         if (!result.ok) throw new Error(result.error || "送出失敗");
-        setStatus("已送出！", "success");
+        showSubmitResult(result.xlsx);
         await loadDay(date);
       } catch (err) {
         setStatus("送出失敗：" + err.message + "（若一直失敗，稍等半分鐘再試一次）", "error");

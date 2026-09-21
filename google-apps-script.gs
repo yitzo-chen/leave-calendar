@@ -294,7 +294,16 @@ function doPost(e) {
       attSheet.getRange(aRow, 1, 1, aVals.length).setValues([aVals]);
     }
 
-    return respond({ ok: true, date: date });
+    // ---- 更新雲端 xlsx（xlsx-drive.gs）：已持有 ScriptLock，內部不再取鎖；失敗不影響日報送出 ----
+    var xlsx;
+    try {
+      var xr = xlsxUpdateForDate(date);
+      xlsx = { ok: true, url: xr.url, warnings: xr.warnings || [] };
+    } catch (xerr) {
+      xlsx = { ok: false, error: String(xerr) };
+    }
+
+    return respond({ ok: true, date: date, xlsx: xlsx });
   } catch (err) {
     return respond({ ok: false, error: String(err) });
   } finally {
