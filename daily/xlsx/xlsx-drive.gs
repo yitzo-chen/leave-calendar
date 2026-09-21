@@ -159,6 +159,7 @@ function xlsxDayData_(db, date) {
 // ---------- 對外入口 ----------
 /**
  * 更新雲端 xlsx：重寫指定日期，以及檔案中「不早於該日」的所有分頁（後面日期的累計會跟著變）。
+ * 指定日期已沒有日報頭（資料被刪除）時，會移除該日分頁；分頁全被移除時把檔案丟垃圾桶（回傳 removed:true）。
  * date 為 null 時，依日報頭的全部日期整個重建。
  * 失敗時拋出例外，由呼叫端決定是否影響日報送出。
  * @return {ok, fileId, url, sheets, rebuilt, warnings}
@@ -191,7 +192,7 @@ function xlsxRun_(date) {
   var warnings = db.warnings.slice(), rebuilt = 0;
   Object.keys(targets).sort().forEach(function (d) {
     var data = xlsxDayData_(db, d);
-    if (!data) return; // 該日已沒有日報頭：保留舊分頁（若有）
+    if (!data) { delete byName[XlsxBuilder.sheetNameForDate(d)]; return; } // 該日已沒有日報頭（被刪除）：移除舊分頁
     var r = XlsxBuilder.buildDaySheet(tsheet, data);
     byName[XlsxBuilder.sheetNameForDate(d)] = { name: XlsxBuilder.sheetNameForDate(d), xml: r.xml };
     r.warnings.forEach(function (w) { warnings.push(d + "：" + w); });
@@ -199,14 +200,31 @@ function xlsxRun_(date) {
   });
 
   var sheets = Object.keys(byName).map(function (k) { return byName[k]; });
-  if (!sheets.length) throw new Error("沒有任何日期可寫入 xlsx");
+  if (!sheets.length) {
+    // 最後一個分頁也被移除、整份 xlsx 已沒有內容：把檔案丟垃圾桶（可還原），下次送出日報時會用範本重建
+    if (date && file) {
+      file.setTrashed(true);
+      PropertiesService.getScriptProperties().deleteProperty("XLSX_FILE_ID");
+      return { ok: true, removed: true, sheets: 0, rebuilt: 0, full: full, warnings: warnings };
+    }
+    throw new Error("沒有任何日期可寫入 xlsx");
+  }
   var active = date ? XlsxBuilder.sheetNameForDate(date) : null;
+  if (active && !byName[active]) active = null; // 該日分頁已被移除，改用預設的作用中分頁
   var parts = XlsxBuilder.assembleWorkbook(template, sheets, active);
   var saved = xlsxSave_(xlsxZip_(parts, XLSX_OUTPUT_NAME));
   return { ok: true, fileId: saved.getId(), url: saved.getUrl(), sheets: sheets.length, rebuilt: rebuilt, full: full, warnings: warnings };
 }
 
 function xlsxUpdateForDate(date) { return xlsxRun_(date); }
+
+/** 目前的 xlsx 內有沒有該日期的分頁（後台管理「刪除某天資料」用來判斷 xlsx 是否要處理） */
+function xlsxHasSheetForDate(date) {
+  var file = xlsxFindOutput_();
+  if (!file) return false;
+  var name = XlsxBuilder.sheetNameForDate(date);
+  return XlsxBuilder.readSheets(xlsxUnzip_(file.getBlob())).some(function (s) { return s.name === name; });
+}
 
 /** 管理用：依試算表資料整個重建 xlsx（範本改版或檔案被刪除後使用），在編輯器直接執行 */
 function xlsxRebuildAll() {

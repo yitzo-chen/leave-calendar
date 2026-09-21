@@ -92,7 +92,7 @@ function makeGlueEnv(opts) {
       formatDate: (d) => d.toISOString().slice(0, 10),
     },
     Session: { getScriptTimeZone: () => "Asia/Taipei" },
-    PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => (k in s.props ? s.props[k] : null), setProperty: (k, v) => { s.props[k] = v; } }) },
+    PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => (k in s.props ? s.props[k] : null), setProperty: (k, v) => { s.props[k] = v; }, deleteProperty: (k) => { delete s.props[k]; } }) },
     ScriptApp: { getOAuthToken: () => "fake-token" },
     UrlFetchApp: {
       fetch(url, o) {

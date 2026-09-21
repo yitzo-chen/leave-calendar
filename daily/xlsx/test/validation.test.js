@@ -304,6 +304,65 @@ const rejected = (env, r, re) => (r.ok === false && (!re || re.test(r.error)) &&
       [{ ok: true, url: "" }, true, true, true, { ok: true, url: "" }]);
   });
 
+  // ---- 後台管理：一鍵刪除某天資料（選單「日報管理」）----
+  const D1 = "2026-09-21", D2 = "2026-09-22";
+  const jr = (v) => JSON.parse(JSON.stringify(v)); // 跨 vm 領域的物件轉成一般物件
+  const core = (e, d) => jr(e.call("adminDeleteDayCore(" + JSON.stringify(d) + ")"));
+  const xlsxBytes = (e) => Object.values(e.state.files).find((f) => f.name === "施工日報彙整.xlsx" && !f.trashed);
+  const twoDays = () => { // 兩天資料：D1 公司工 1/1，D2 公司工 2/2（D2 累計 = 1 + 2 = 3）
+    const e = makeEnv();
+    e.post(sub({ date: D1, items: [{ name: "公司工", am: 1, pm: 1 }] }));
+    e.post(sub({ date: D2, items: [{ name: "公司工", am: 2, pm: 2 }] }));
+    return e;
+  };
+
+  T("V26", "parseAdminDate：接受西元/民國與 - / . 分隔；不合法（不存在的日期、2 位數年、亂字）回空字串", () => {
+    const e = makeEnv();
+    const p = (s) => e.call("parseAdminDate(" + JSON.stringify(s) + ")");
+    return eq(["2026-09-21", "2026/9/1", "115.9.21", "115/09/21", " 2026-9-5 "].map(p).concat(["2026-02-30", "26-9-21", "abc", "", "2026-13-01"].map(p)),
+      ["2026-09-21", "2026-09-01", "2026-09-21", "2026-09-21", "2026-09-05", "", "", "", "", ""]);
+  });
+  T("V27", "刪除某天：三張表該天的列都刪、別天不動；xlsx 移除該日分頁並重算之後日期的累計（3 → 2）", () => {
+    const e = twoDays();
+    const before = XLSX.read(xlsxBytes(e).bytes);
+    const cumBefore = before.Sheets["115.9.22"].F8.v;
+    const cnt = jr(e.call("adminCountDay(" + JSON.stringify(D1) + ")"));
+    const r = core(e, D1);
+    const after = XLSX.read(xlsxBytes(e).bytes);
+    return eq([cumBefore, cnt, r.ok, r.deleted, r.xlsx.ok, e.rows("日報頭"), e.rows("日報記錄"), e.rows("本工出勤"), after.SheetNames, after.Sheets["115.9.22"].F8.v],
+      [3, { header: 1, record: 1, attendance: 1, xlsx: true }, true, { header: 1, record: 1, attendance: 1 }, true, 1, 1, 1, ["115.9.22"], 2]);
+  });
+  T("V28", "刪除最後一天：xlsx 已無分頁 → 檔案丟垃圾桶並清掉記錄的檔案 ID；之後再送出日報會重新建立、xlsxUrl 指到新檔", () => {
+    const e = twoDays();
+    core(e, D1);
+    const r = core(e, D2);
+    const gone = xlsxBytes(e) === undefined, propGone = !("XLSX_FILE_ID" in e.state.props);
+    e.post(sub({ date: D2 }));
+    const url = e.get({ action: "xlsxUrl" }).url;
+    return eq([r.ok, r.xlsx.removedFile, gone, propGone, e.rows("日報頭") === 1 && e.rows("日報記錄") === 1, /^https:\/\/drive\.google\.com\//.test(url)], [true, true, true, true, true, true]);
+  });
+  T("V29", "刪除沒有資料的日期：xlsx 尚未建立 → 略過；xlsx 已存在 → 不動其他分頁；日報頭已被手動刪掉的殘留分頁與資料也一併清除", () => {
+    const fresh = makeEnv();
+    const r0 = core(fresh, D1);
+    const e = twoDays();
+    const r1 = core(e, "2030-01-01");
+    const sheetsKept = XLSX.read(xlsxBytes(e).bytes).SheetNames;
+    // 模擬手動刪掉 D1 的日報頭：資料表殘留該天的記錄／出勤，xlsx 仍有分頁
+    const e2 = twoDays();
+    const hdr = e2.state.sheetsData["日報頭"]; hdr.splice(1, 1);
+    const cnt = jr(e2.call("adminCountDay(" + JSON.stringify(D1) + ")"));
+    const r2 = core(e2, D1);
+    return eq([r0.ok, r0.deleted, r0.xlsx.skipped, r1.ok, r1.deleted, sheetsKept, cnt, r2.deleted, XLSX.read(xlsxBytes(e2).bytes).SheetNames, e2.rows("日報記錄"), e2.rows("本工出勤")],
+      [true, { header: 0, record: 0, attendance: 0 }, true, true, { header: 0, record: 0, attendance: 0 }, ["115.9.21", "115.9.22"],
+        { header: 0, record: 1, attendance: 1, xlsx: true }, { header: 0, record: 1, attendance: 1 }, ["115.9.22"], 1, 1]);
+  });
+  T("V30", "有人正在送出（鎖被占用）→ 回「系統忙碌」，不刪任何資料；日期格式錯誤也直接拒絕", () => {
+    const e = twoDays();
+    e.ctx.LockService = { getScriptLock: () => ({ waitLock() { throw new Error("busy"); }, releaseLock() {} }) };
+    const busy = core(e, D1), bad = core(e, "115.9.21");
+    return eq([busy.ok, /忙碌/.test(busy.error), e.rows("日報頭"), e.rows("日報記錄"), bad.ok], [false, true, 2, 2, false]);
+  });
+
   R.forEach((r) => console.log("[" + r[1] + "] " + r[0] + " " + r[2] + (r[3] ? "\n      -> " + String(r[3]).slice(0, 500) : "")));
   console.log({ total: R.length, notPass: R.filter((r) => r[1] !== "PASS").length });
 })();

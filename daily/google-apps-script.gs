@@ -548,3 +548,135 @@ function doGet(e) {
 function respond(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
 }
+
+// ---------- 後台管理：一鍵刪除某天資料（試算表上方「日報管理」選單）----------
+// 給接手的後台管理人員用：不用逐張資料表找列、也不用碰 xlsx。只有能編輯這份試算表的人看得到選單。
+
+function onOpen() {
+  SpreadsheetApp.getUi().createMenu("日報管理").addItem("刪除某天日報資料…", "adminDeleteDay").addToUi();
+}
+
+// 接受 2026-09-21、2026/9/21、115.9.21（民國，年為 3 位數）；不合法回傳空字串，合法回傳 yyyy-mm-dd
+function parseAdminDate(input) {
+  var m = /^(\d{3,4})[-\/.](\d{1,2})[-\/.](\d{1,2})$/.exec(String(input || "").trim());
+  if (!m) return "";
+  var y = Number(m[1]), mo = Number(m[2]), d = Number(m[3]);
+  if (y < 1000) y += 1911;
+  var dt = new Date(y, mo - 1, d);
+  if (dt.getFullYear() !== y || dt.getMonth() !== mo - 1 || dt.getDate() !== d) return "";
+  return y + "-" + ("0" + mo).slice(-2) + "-" + ("0" + d).slice(-2);
+}
+
+// 該分頁中日期欄（A 欄）等於 date 的所有列號（由小到大）
+function adminDayRows_(sheet, date) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+  var vals = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+  var rows = [];
+  for (var i = 0; i < vals.length; i++) {
+    if (normalizeDate(vals[i][0]) === date) rows.push(i + 2);
+  }
+  return rows;
+}
+
+// 統計某天現有多少資料（不修改任何東西）：{header, record, attendance, xlsx(該日在 xlsx 有沒有分頁)}
+function adminCountDay(date) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var xlsx = false;
+  try { xlsx = xlsxHasSheetForDate(date); } catch (err) { xlsx = false; }
+  return {
+    header: adminDayRows_(ss.getSheetByName(SHEET_HEADER), date).length,
+    record: adminDayRows_(ss.getSheetByName(SHEET_RECORD), date).length,
+    attendance: adminDayRows_(ss.getSheetByName(SHEET_ATTENDANCE), date).length,
+    xlsx: xlsx,
+  };
+}
+
+// 刪除某天在三張資料表的所有列，並同步 xlsx（移除該日分頁、重算之後日期的累計）。
+// 與日報送出共用同一把鎖，避免有人正好在送出時互相干擾。
+// @return {ok, deleted:{header,record,attendance}, xlsx:{ok, skipped?, removedFile?, sheets?, error?}} 或 {ok:false, error}
+function adminDeleteDayCore(date) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date))) return { ok: false, error: "日期格式錯誤" };
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (firstMissingSheet(ss, [SHEET_HEADER, SHEET_RECORD, SHEET_ATTENDANCE])) return { ok: false, error: NOT_SETUP_ERROR };
+
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+  } catch (err) {
+    return { ok: false, error: "系統忙碌中（可能有人正在送出日報），請稍後再試" };
+  }
+  try {
+    var deleted = {};
+    [[SHEET_HEADER, "header"], [SHEET_RECORD, "record"], [SHEET_ATTENDANCE, "attendance"]].forEach(function (p) {
+      var sheet = ss.getSheetByName(p[0]);
+      var rows = adminDayRows_(sheet, date);
+      for (var i = rows.length - 1; i >= 0; i--) sheet.deleteRow(rows[i]); // 由下往上刪，列號才不會位移
+      deleted[p[1]] = rows.length;
+    });
+
+    var xlsx;
+    try {
+      if (!xlsxFindOutput_()) {
+        xlsx = { ok: true, skipped: true }; // xlsx 還沒建立過，不需處理
+      } else {
+        var xr = xlsxUpdateForDate(date);
+        xlsx = { ok: true, removedFile: !!xr.removed, sheets: xr.sheets };
+      }
+    } catch (xerr) {
+      xlsx = { ok: false, error: String(xerr) }; // 資料已刪除；xlsx 失敗時可再執行 xlsxRebuildAll() 補救
+    }
+    return { ok: true, deleted: deleted, xlsx: xlsx };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// 選單「刪除某天日報資料…」的畫面流程：輸入日期 → 顯示將刪除的筆數並二次確認 → 執行 → 顯示結果
+function adminDeleteDay() {
+  var ui = SpreadsheetApp.getUi();
+  var resp = ui.prompt(
+    "刪除某天日報資料",
+    "請輸入要刪除的日期（例如 2026-09-21 或民國 115.9.21）。\n\n" +
+    "會刪除該天在「日報頭」「日報記錄」「本工出勤」的資料，並從 xlsx 移除該天的分頁。",
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (resp.getSelectedButton() !== ui.Button.OK) return;
+
+  var date = parseAdminDate(resp.getResponseText());
+  if (!date) {
+    ui.alert("日期格式不正確", "請輸入像 2026-09-21 或 115.9.21 的日期。", ui.ButtonSet.OK);
+    return;
+  }
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (firstMissingSheet(ss, [SHEET_HEADER, SHEET_RECORD, SHEET_ATTENDANCE])) {
+    ui.alert("無法刪除", NOT_SETUP_ERROR, ui.ButtonSet.OK);
+    return;
+  }
+
+  var n = adminCountDay(date);
+  if (!n.header && !n.record && !n.attendance && !n.xlsx) {
+    ui.alert("找不到資料", date + " 在三張資料表和 xlsx 都沒有資料，沒有刪除任何東西。", ui.ButtonSet.OK);
+    return;
+  }
+  var sheetName = XlsxBuilder.sheetNameForDate(date);
+  var confirmText = "即將刪除 " + date + " 的資料：\n\n" +
+    "・日報頭　　 " + n.header + " 列\n" +
+    "・日報記錄　 " + n.record + " 列\n" +
+    "・本工出勤　 " + n.attendance + " 列\n" +
+    "・xlsx 分頁「" + sheetName + "」：" + (n.xlsx ? "會移除（之後日期的累計會重新計算）" : "沒有") + "\n\n" +
+    "刪除後無法在網頁上復原（可用 Google 試算表的「檔案 → 版本記錄」還原）。\n確定要刪除嗎？";
+  if (ui.alert("確認刪除 " + date, confirmText, ui.ButtonSet.YES_NO) !== ui.Button.YES) return;
+
+  var r = adminDeleteDayCore(date);
+  if (!r.ok) {
+    ui.alert("刪除失敗", r.error, ui.ButtonSet.OK);
+    return;
+  }
+  var msg = "已刪除 " + date + "：日報頭 " + r.deleted.header + " 列、日報記錄 " + r.deleted.record + " 列、本工出勤 " + r.deleted.attendance + " 列。\n\n";
+  if (!r.xlsx.ok) msg += "⚠ xlsx 更新失敗：" + r.xlsx.error + "\n資料已刪除，請到 Apps Script 執行 xlsxRebuildAll() 補救。";
+  else if (r.xlsx.skipped) msg += "xlsx 尚未建立，不需處理。";
+  else if (r.xlsx.removedFile) msg += "xlsx 已沒有任何分頁，已把檔案移到 Drive 垃圾桶（下次送出日報時會自動重新建立）。";
+  else msg += "xlsx 已更新（移除該日分頁，並重算之後日期的累計）。";
+  ui.alert("刪除完成", msg, ui.ButtonSet.OK);
+}
