@@ -106,9 +106,10 @@ function makeGlueEnv(opts) {
   };
   vm.createContext(ctx);
   const run = (path) => vm.runInContext(fs.readFileSync(path, "utf8"), ctx, { filename: path });
-  run("D:/daily-report/google-apps-script.gs");     // SHEET_* 常數與 normalizeDate
-  run("D:/daily-report/xlsx/xlsx-builder.js");
-  run("D:/daily-report/xlsx/xlsx-drive.gs");
+  const root = require("path").join(__dirname, "..", ".."); // daily/（此檔位於 daily/xlsx/test/）
+  run(root + "/google-apps-script.gs");     // SHEET_* 常數與 normalizeDate
+  run(root + "/xlsx/xlsx-builder.js");
+  run(root + "/xlsx/xlsx-drive.gs");
   return { state: s, ctx, call: (code) => vm.runInContext(code, ctx), readZip, writeZip, Blob };
 }
 module.exports = { makeGlueEnv, readZip, writeZip };

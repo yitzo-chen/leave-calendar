@@ -1,10 +1,19 @@
 # 施工日報填寫系統
 
 試行對象：lng案（洲際液化天然氣接收站，利用尚未開工的部分安全測試，不影響 SS-01/SS-02 正式資料）。
-架構跟 `../leave-calendar` 一樣：Google 試算表當資料庫、Apps Script 當後端、靜態網頁當前端。
+架構跟 `../leave/` 一樣：Google 試算表當資料庫、Apps Script 當後端、靜態網頁當前端。
 
-**目前狀態：Phase 1+2（資料結構＋後端）已完成，前端網頁尚未開始寫。網頁完成前只能用 curl/Postman 測試後端。**
-**依使用者指示：全程先在本機測試，Apps Script 部署時存取權限設「只有我」，暫不對外發布。**
+**目前狀態：前端、後端（Apps Script 第 11 版）、xlsx 雲端存檔皆已完成並上線，網址為 `…/leave-calendar/daily/`。**
+
+## 在本倉庫中的位置與維護方式
+
+日報原始碼已從 `D:\daily-report` 併入本倉庫的 `daily/`（保留原本的 commit 歷史），這裡是**唯一一份**原始碼，不要再另存副本。
+
+- 網頁（會被員工看到）：`index.html`、`app.js`、`style.css`、`config.js`
+- 後端（要手動貼進 Apps Script 編輯器並部署，不會因為 push 而生效）：`google-apps-script.gs`、`xlsx/xlsx-builder.js`（Apps Script 內檔名 `xlsx-builder.gs`）、`xlsx/xlsx-drive.gs`
+- 測試：`xlsx/test/`，在該資料夾內執行，例如 `node validation.test.js`（需要 `jszip`、`xlsx` 套件與範本 `日報範本.xlsx`）
+- 因為 GitHub Pages 會提供倉庫內所有檔案，後端與測試檔也可從網址讀到；內容不含密碼（密碼存在 Apps Script 的指令碼屬性）。
+- 修改前端後，把 `index.html` 內 `?v=` 的版本號遞增，避免瀏覽器快取舊檔。
 
 ## 資料放在哪裡
 

@@ -1,0 +1,4 @@
+# 日報 xlsx 測試腳本執行時會在目前目錄產生的輸出檔
+glue-out.xlsx
+sample.xlsx
+sample.xlsx.expected.json
