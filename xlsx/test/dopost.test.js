@@ -28,6 +28,8 @@ function makeEnv(opts) {
   const env = makeGlueEnv({ sheetsData: baseSheets(), driveFiles: { "日報範本.xlsx": TEMPLATE_BYTES } });
   const data = env.state.sheetsData, cache = {};
   const sheet = (n) => ({
+    getMaxRows: () => 1000,
+    insertRowsAfter: () => {},
     getLastRow: () => { let l = 0; data[n].forEach((r, i) => { if (r.some((v) => v !== "" && v != null)) l = i + 1; }); return l; },
     getDataRange: () => ({ getValues: () => JSON.parse(JSON.stringify(data[n])) }),
     getRange(r, c, nr, nc) {

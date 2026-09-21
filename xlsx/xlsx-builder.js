@@ -246,17 +246,26 @@ var XlsxBuilder = (function () {
    * 算法與後端 cumulative 相同：材料＝(上午+下午) 直接加總；工種/機具＝(上午+下午)/2 累加。
    * @param records [{date, name, am, pm}]（全部日期）
    * @param categoryByName {項目名稱: "工種"|"機具"|"材料"}
+   * @param warnings 選填陣列；項目不在 categoryByName（清單）時略過該筆，並把警告訊息 push 進來
    * @return {日期: {項目名稱: 累計}}，只含有紀錄的日期；其他日期用 cumulativeAsOf 取值
    */
-  function computeCumulatives(records, categoryByName) {
+  function computeCumulatives(records, categoryByName, warnings) {
     var sorted = records.slice().sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
-    var running = {}, byDate = {}, i;
+    // 項目名稱當 key：一律用無原型物件，避免 constructor / __proto__ 等名稱汙染
+    var running = Object.create(null), byDate = Object.create(null), skipped = Object.create(null), i;
     for (i = 0; i < sorted.length; i++) {
       var r = sorted[i];
+      if (!Object.prototype.hasOwnProperty.call(categoryByName, r.name)) {
+        if (!skipped[r.name]) {
+          skipped[r.name] = true;
+          if (warnings) warnings.push("累計略過不在清單的項目：" + r.name);
+        }
+        continue;
+      }
       var sum = Number(r.am || 0) + Number(r.pm || 0);
       var v = categoryByName[r.name] === "材料" ? sum : sum / 2;
       running[r.name] = (running[r.name] || 0) + v;
-      var snap = {};
+      var snap = Object.create(null);
       for (var n in running) snap[n] = running[n];
       byDate[r.date] = snap;
     }

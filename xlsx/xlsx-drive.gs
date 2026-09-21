@@ -1,6 +1,6 @@
 /**
  * 日報 xlsx 雲端存檔（Apps Script 端）。
- * 依賴：xlsx-builder.gs（XlsxBuilder）＋ google-apps-script.gs 內的 SHEET_* 常數與 normalizeDate。
+ * 依賴：xlsx-builder.gs（XlsxBuilder）＋ google-apps-script.gs 內的 SHEET_* 常數與 normalizeDate / unsanitizeCell。
  *
  * 流程：讀試算表資料 → 用 Drive 上的「日報範本.xlsx」產生某天（及之後已存在日期）的分頁
  *       → 組成一個 xlsx 存回同資料夾的「施工日報彙整.xlsx」。
@@ -98,13 +98,14 @@ function xlsxLoadDb_() {
     v.shift();
     return v;
   }
-  var db = { headers: {}, recordsByDate: {}, attendanceByDate: {}, catalog: [], categoryByName: {}, basic: {}, records: [] };
+  // 以日期/項目名稱當 key 的物件用無原型物件，避免 constructor / __proto__ 等名稱汙染
+  var db = { headers: {}, recordsByDate: {}, attendanceByDate: {}, catalog: [], categoryByName: Object.create(null), basic: {}, records: [], warnings: [] };
 
   // 基本資料分頁沒有表頭（第 1 列就是「業主」），不能用 rows()
   ss.getSheetByName(SHEET_BASIC).getDataRange().getValues().forEach(function (r) { db.basic[r[0]] = r[1]; });
 
   rows(SHEET_LIST).forEach(function (r) {
-    var name = String(r[1]).trim();
+    var name = unsanitizeCell(r[1]).trim();
     if (!name) return;
     db.catalog.push({ category: r[0], name: name, active: String(r[3]).trim().toUpperCase() === "TRUE" });
     db.categoryByName[name] = r[0];
@@ -114,29 +115,29 @@ function xlsxLoadDb_() {
     var d = normalizeDate(r[0]);
     if (!d) return;
     db.headers[d] = {
-      weather: r[1], status: r[2], todayWork: r[3], tomorrowPlan: r[4], remark: r[5], reporter: r[6],
-      directorAm: r[9] || "", directorPm: r[10] || "", safetyAm: r[11] || "", safetyPm: r[12] || "",
+      weather: unsanitizeCell(r[1]), status: unsanitizeCell(r[2]), todayWork: unsanitizeCell(r[3]), tomorrowPlan: unsanitizeCell(r[4]), remark: unsanitizeCell(r[5]), reporter: unsanitizeCell(r[6]),
+      directorAm: unsanitizeCell(r[9]), directorPm: unsanitizeCell(r[10]), safetyAm: unsanitizeCell(r[11]), safetyPm: unsanitizeCell(r[12]),
     };
   });
 
   rows(SHEET_RECORD).forEach(function (r) {
     var d = normalizeDate(r[0]);
     if (!d) return;
-    var rec = { date: d, name: String(r[1]).trim(), am: Number(r[2]) || 0, pm: Number(r[3]) || 0 };
+    var rec = { date: d, name: unsanitizeCell(r[1]).trim(), am: Number(r[2]) || 0, pm: Number(r[3]) || 0 };
     db.records.push(rec);
-    (db.recordsByDate[d] = db.recordsByDate[d] || {})[rec.name] = rec;
+    (db.recordsByDate[d] = db.recordsByDate[d] || Object.create(null))[rec.name] = rec;
   });
 
   rows(SHEET_ATTENDANCE).forEach(function (r) {
     var d = normalizeDate(r[0]);
     if (!d) return;
     (db.attendanceByDate[d] = db.attendanceByDate[d] || []).push({
-      name: String(r[1]).trim(), am: r[2] === "V", pm: r[3] === "V",
-      amHours: Number(r[4]) || 0, pmHours: Number(r[5]) || 0, reason: String(r[6] || ""),
+      name: unsanitizeCell(r[1]).trim(), am: r[2] === "V", pm: r[3] === "V",
+      amHours: Number(r[4]) || 0, pmHours: Number(r[5]) || 0, reason: unsanitizeCell(r[6]),
     });
   });
 
-  db.cumByDate = XlsxBuilder.computeCumulatives(db.records, db.categoryByName);
+  db.cumByDate = XlsxBuilder.computeCumulatives(db.records, db.categoryByName, db.warnings);
   return db;
 }
 
@@ -187,7 +188,7 @@ function xlsxRun_(date) {
     });
   }
 
-  var warnings = [], rebuilt = 0;
+  var warnings = db.warnings.slice(), rebuilt = 0;
   Object.keys(targets).sort().forEach(function (d) {
     var data = xlsxDayData_(db, d);
     if (!data) return; // 該日已沒有日報頭：保留舊分頁（若有）
