@@ -1,0 +1,235 @@
+{
+  "_說明": "洲際 LNG『日報範本.xlsx』(分頁 115.9.13) 的欄位對應表，由 openpyxl + 直接讀 sheet XML 分析而來。座標皆為範本原狀；'capacity' 是範本能放的列數上限。",
+  "template": "D:/洲際液化天然氣接收站AI/日報範本.xlsx",
+  "sheetNameFormat": "民國年.月.日，例如 115.9.20",
+  "printSetup": {
+    "printArea": "$A$1:$S$55",
+    "paperSize": 9,
+    "scale": 94,
+    "orientation": "portrait",
+    "fitToPage": true,
+    "horizontalCentered": true,
+    "verticalCentered": true,
+    "margins": {
+      "left": 0.2362,
+      "right": 0.2362,
+      "top": 0.1181,
+      "bottom": 0.1181,
+      "header": 0.315,
+      "footer": 0.315
+    }
+  },
+  "header": {
+    "company": {
+      "cell": "A1",
+      "mergedTo": "S1",
+      "rule": "= 基本資料.公司名稱；沒填就寫空白，不使用範本預設值"
+    },
+    "title": {
+      "cell": "A2",
+      "keep": true
+    },
+    "owner": {
+      "cell": "A3",
+      "format": "業主：{基本資料.業主}"
+    },
+    "project": {
+      "cell": "A4",
+      "format": "工程名稱：{基本資料.工程名稱}"
+    },
+    "contract": {
+      "cell": "A5",
+      "mergedTo": "I5",
+      "format": "合約金額：{基本資料.合約金額}"
+    },
+    "startDate": {
+      "cell": "A6",
+      "mergedTo": "I6",
+      "format": "開工日期：{基本資料.開工日期}"
+    },
+    "year": {
+      "cell": "K5",
+      "type": "number",
+      "note": "民國年；H2 檔同位置 K5=115"
+    },
+    "month": {
+      "cell": "N5",
+      "type": "number"
+    },
+    "day": {
+      "cell": "P5",
+      "type": "number"
+    },
+    "weatherStatus": {
+      "cell": "J6",
+      "mergedTo": "S6",
+      "type": "string",
+      "template": "    天氣：  □晴 □陰   □雨   施工狀況：□施工  □休息",
+      "rule": "選中的框改成 ■，其餘保持 □"
+    }
+  },
+  "items": {
+    "labor": {
+      "rows": [
+        8,
+        18
+      ],
+      "capacity": 11,
+      "name": "A:C(合併)",
+      "am": "D",
+      "pm": "E",
+      "cumulative": "F:G(合併,寫F)",
+      "headerRow": 7
+    },
+    "equipment": {
+      "rows": [
+        20,
+        29
+      ],
+      "capacity": 10,
+      "name": "A:C(合併)",
+      "am": "D",
+      "pm": "E",
+      "cumulative": "F:G(合併,寫F)",
+      "headerRow": 19
+    },
+    "material": {
+      "rows": [
+        31,
+        45
+      ],
+      "capacity": 15,
+      "name": "A:C(合併)",
+      "use": "D:E(合併,寫D)",
+      "cumulative": "F:G(合併,寫F)",
+      "headerRow": 30
+    },
+    "note": "範本的名稱欄全空白，名稱由『工種機具材料清單』分頁的啟用項目依序填入；累計用數值（後端 cumulative 算法：工種/機具=(上午+下午)/2 累加、材料=直接加總）"
+  },
+  "text": {
+    "today": {
+      "col": "H:S(每列各自合併)",
+      "rows": [
+        8,
+        20
+      ],
+      "capacity": 13,
+      "labelCell": "H7"
+    },
+    "tomorrow": {
+      "col": "H:S(每列各自合併)",
+      "rows": [
+        22,
+        32
+      ],
+      "capacity": 11,
+      "labelCell": "H21"
+    },
+    "widthChars": "約 66 個半形字寬（中文約 30 字）；超過需自動折行成多列，超出容量則併入最後一列"
+  },
+  "people": {
+    "am": {
+      "labelCell": "H34",
+      "director": "J34(J34:K36 合併)",
+      "safety": "J37(J37:K39 合併)",
+      "crewLabel": "L34(L34:L39 合併)",
+      "rows": [
+        34,
+        39
+      ],
+      "capacity": 6
+    },
+    "pm": {
+      "labelCell": "H40",
+      "director": "J40(J40:K42 合併)",
+      "safety": "J43(J43:K45 合併)",
+      "crewLabel": "L40(L40:L45 合併)",
+      "rows": [
+        40,
+        45
+      ],
+      "capacity": 6
+    },
+    "columns": {
+      "name": "M(M:N 每列合併)",
+      "overtime": "O",
+      "overtimeReason": "P:S"
+    },
+    "headers": {
+      "row": 33,
+      "name": "M33",
+      "overtime": "O33",
+      "overtimeReasonHeader": "P33"
+    },
+    "crewLabelText": "本工（範本原為『粗工』，L34 與 L40 改為固定文字『本工』）",
+    "mergesToAdd": [
+      "P33:S33",
+      "P34:S34",
+      "…逐列…",
+      "P45:S45"
+    ],
+    "mergeCountBefore": 202,
+    "mergeCountAfter": 175,
+    "templateDefaults": {
+      "J34": "陳易佐",
+      "J40": "陳易佐"
+    },
+    "overflowPolicy": "每時段最多 6 人；超過時有加班的人優先，其餘姓名以『、』併入第 6 列並在回傳中警告",
+    "note": "P33:S33 ~ P45:S45 共13個新增；加上備註區 -41 +1，最終合併數 175"
+  },
+  "remarks": {
+    "region": "A46:S52",
+    "decision": "整塊合併成單一方塊：刪除該區既有41個小合併，新增 A46:S52，左上 A46 寫『備註：…』",
+    "existingMergesRemoved": 41,
+    "needsUserConfirm": false
+  },
+  "signature": {
+    "chairman": {
+      "cell": "A53",
+      "mergedTo": "C54",
+      "keep": true
+    },
+    "manager": {
+      "cell": "G53",
+      "mergedTo": "I54",
+      "keep": true
+    },
+    "reporterLabel": {
+      "cell": "M53",
+      "mergedTo": "N54",
+      "keep": true
+    },
+    "reporterName": {
+      "cell": "O53",
+      "mergedTo": "S54",
+      "type": "string",
+      "note": "填表人姓名；H2 檔對應 O52"
+    }
+  },
+  "outOfScope": [
+    "U~Z 欄（歷史事件索引、備用格，T23:U23 Z18:AB18 合併與 U8/U31/U32/X21 空白格）不寫入也不移除"
+  ],
+  "workbookParts": {
+    "perSheet": [
+      "xl/worksheets/sheetN.xml",
+      "workbook.xml <sheet>",
+      "workbook.xml.rels",
+      "[Content_Types].xml Override",
+      "definedName _xlnm.Print_Area（localSheetId=分頁順序索引，插入日期分頁後要重算全部）",
+      "docProps/app.xml TitlesOfParts（保持一致）"
+    ],
+    "sharedResources": [
+      "xl/styles.xml",
+      "xl/sharedStrings.xml",
+      "xl/theme/theme1.xml"
+    ],
+    "printerSettings": "xl/printerSettings/printerSettings1.bin，sheet 的 pageSetup r:id 指向它；新增分頁可共用或省略 r:id"
+  },
+  "_決議": [
+    "格式一律以洲際範本為準；H2 檔只當『雲端以日期為分頁』的樣式參考",
+    "公司名稱只取 基本資料.公司名稱，沒填就留空白（不使用範本預設值）",
+    "J6 範本文字已由使用者修正為『天氣』",
+    "備註區選擇：整塊合併成單一方塊 A46:S52",
+    "超出容量：有數字/有加班的優先放入，放不下的以警告回報（預設，使用者未反對）"
+  ]
+}
