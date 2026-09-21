@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title id="pageTitle">員工休假月曆</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23C8630A'/%3E%3Ctext x='50' y='68' font-size='58' text-anchor='middle' fill='white' font-family='Arial'%3E休%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true">休</span>
+    <div>
+      <h1 id="companyName">員工休假月曆</h1>
+      <p class="subtitle">即時同步 Google 試算表・免登入查看</p>
+    </div>
+  </div>
+  <a class="home-link" href="../">‹ 主頁</a>
+</header>
+
+<div id="demoBanner" class="banner" hidden>
+  目前顯示<strong>示範資料</strong>——請在 <code>config.js</code> 填入 Google 試算表 ID 以顯示真實資料。
+</div>
+<div id="errorBanner" class="banner banner-error" hidden></div>
+
+<main>
+  <div class="toolbar">
+    <div class="month-nav">
+      <button id="prevMonth" class="icon-btn" aria-label="上個月">‹</button>
+      <div class="month-label" id="monthLabel">2026 年 9 月</div>
+      <button id="nextMonth" class="icon-btn" aria-label="下個月">›</button>
+      <button id="todayBtn" class="ghost-btn">回到本月</button>
+    </div>
+    <div class="actions">
+      <button id="addLeaveBtn" class="action-btn action-primary">➕ 我要請假</button>
+      <button id="leaveFormBtn" class="action-btn">📄 假單輸出</button>
+      <button id="printBtn" class="action-btn">🖨️ 列印本月</button>
+      <button id="downloadBtn" class="action-btn">⬇️ 下載本月 CSV</button>
+      <a id="sheetLink" class="action-btn action-link" href="#" target="_blank" rel="noopener">📄 開啟完整試算表</a>
+    </div>
+  </div>
+
+  <div class="layout">
+    <aside class="roster" aria-label="員工列表">
+      <h2>員工<span id="empCount" class="count-pill">0</span></h2>
+      <ul id="employeeList" class="employee-list"></ul>
+      <p class="hint">點名字可篩選月曆，再點一次取消</p>
+    </aside>
+
+    <section class="calendar-wrap" aria-label="休假月曆">
+      <div class="weekday-row">
+        <span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span>
+      </div>
+      <div id="calendarGrid" class="calendar-grid"></div>
+      <div class="legend">
+        <span class="legend-item"><i class="dot dot-full"></i>全天休假</span>
+        <span class="legend-item"><i class="dot dot-half"></i>半天休假（上/下）</span>
+        <span class="legend-item"><i class="dot dot-weekend"></i>週末</span>
+      </div>
+    </section>
+  </div>
+</main>
+
+<dialog id="leaveDialog" class="leave-dialog">
+  <form id="leaveForm" method="dialog">
+    <h2>請假申請</h2>
+    <label>
+      姓名
+      <input id="fName" name="name" list="empNames" placeholder="選擇或輸入姓名" required autocomplete="off" maxlength="20">
+      <datalist id="empNames"></datalist>
+    </label>
+    <p class="field-hint">名單裡沒有你的名字？直接輸入新名字送出即可自動加入員工名單。</p>
+    <div class="field-row">
+      <label>
+        開始日期
+        <input id="fStart" name="start" type="date" required>
+      </label>
+      <label>
+        結束日期
+        <input id="fEnd" name="end" type="date" required>
+      </label>
+    </div>
+    <label>
+      假別
+      <select id="fType" name="type">
+        <option value="全天">全天</option>
+        <option value="上午半天">上午半天</option>
+        <option value="下午半天">下午半天</option>
+      </select>
+    </label>
+    <p class="field-hint">半天假請把開始日期和結束日期設成同一天。</p>
+    <label>
+      備註（選填）
+      <input id="fNote" name="note" type="text" maxlength="80" placeholder="例如：返鄉處理家事">
+    </label>
+    <label>
+      通關密碼
+      <input id="fPassword" name="password" type="password" autocomplete="off" placeholder="向管理者索取">
+    </label>
+    <p id="passwordHint" class="field-hint">請先輸入密碼才能送出</p>
+    <label class="pf-checkbox-inline">
+      <input type="checkbox" id="fAlsoPrintForm">
+      送出成功後，順便產生正式假單並列印
+    </label>
+    <div id="formStatus" class="form-status" hidden></div>
+    <div class="dialog-actions">
+      <button type="button" id="cancelLeaveBtn" class="ghost-btn">取消</button>
+      <button type="submit" id="submitLeaveBtn" class="action-btn action-primary">送出</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="leaveFormDialog" class="leave-dialog leave-form-dialog">
+  <form id="leaveFormForm">
+    <h2>假單輸出</h2>
+    <p class="field-hint">填完按「產生假單並列印」，會開瀏覽器列印視窗，選「另存為 PDF」即可自選存放資料夾。這裡填的資料不會存進 Google 試算表。</p>
+    <label>
+      姓名
+      <input id="pfNameInput" list="empNames" placeholder="選擇或輸入姓名" required autocomplete="off" maxlength="20">
+    </label>
+    <label>
+      工地名稱
+      <input id="pfSiteInput" type="text" placeholder="例如：洲際LNG接收站工程" maxlength="40">
+    </label>
+    <label>
+      職務代理人
+      <input id="pfProxyInput" type="text" placeholder="不指定可留空" maxlength="20">
+    </label>
+    <fieldset class="pf-type-fieldset">
+      <legend>假別</legend>
+      <label class="pf-radio"><input type="radio" name="pfType" value="婚假" required> 婚假</label>
+      <label class="pf-radio"><input type="radio" name="pfType" value="事假"> 事假</label>
+      <label class="pf-radio"><input type="radio" name="pfType" value="病假"> 病假</label>
+      <label class="pf-radio"><input type="radio" name="pfType" value="喪假"> 喪假</label>
+    </fieldset>
+    <p class="field-hint">婚假／病假／喪假請另外檢附證明文件，這裡不處理附件。</p>
+
+    <p class="pf-section-label">請假起（時分為24小時制，上午/下午僅作跨日註記用）：</p>
+    <div class="pf-datetime-row">
+      <input id="pfStartDate" type="date" required>
+      <select id="pfStartAmpm"><option value="上午" selected>上午</option><option value="下午">下午</option></select>
+      <input id="pfStartHour" type="number" min="0" max="23" placeholder="時" value="8">
+      <input id="pfStartMin" type="number" min="0" max="59" placeholder="分" value="0">
+    </div>
+    <p class="pf-section-label">請假迄（時分為24小時制，上午/下午僅作跨日註記用）：</p>
+    <div class="pf-datetime-row">
+      <input id="pfEndDate" type="date" required>
+      <select id="pfEndAmpm"><option value="上午">上午</option><option value="下午" selected>下午</option></select>
+      <input id="pfEndHour" type="number" min="0" max="23" placeholder="時" value="17">
+      <input id="pfEndMin" type="number" min="0" max="59" placeholder="分" value="0">
+    </div>
+
+    <p class="pf-section-label">請假日時數（共計）：</p>
+    <div class="field-row">
+      <label>
+        天
+        <input id="pfDaysInput" type="number" min="0" step="0.5" placeholder="天">
+      </label>
+      <label>
+        時
+        <input id="pfHoursInput" type="number" min="0" step="0.5" placeholder="時">
+      </label>
+    </div>
+    <label>
+      交辦事項（選填）
+      <textarea id="pfHandoverInput" rows="2" maxlength="200" placeholder="請假期間工作如何交接"></textarea>
+    </label>
+
+    <div id="pfFormStatus" class="form-status error" hidden></div>
+    <div class="dialog-actions">
+      <button type="button" id="leaveFormCancelBtn" class="ghost-btn">取消</button>
+      <button type="submit" class="action-btn action-primary">產生假單並列印</button>
+    </div>
+  </form>
+</dialog>
+
+<div id="printLeaveForm" class="print-leave-form">
+  <table>
+    <tbody>
+      <tr><td colspan="5" class="pf-header-companies">坤鎔營造股份有限公司　　　專壹營造股份有限公司　　　裕發營造工程有限公司</td></tr>
+      <tr><td colspan="5" class="pf-form-title">請　假　單</td></tr>
+      <tr>
+        <td colspan="3">工地名稱：<span id="pfOutSite"></span></td>
+        <td colspan="2">請假填寫日期：<span id="pfOutFillDate"></span></td>
+      </tr>
+      <tr>
+        <td colspan="3">姓　　名：<span id="pfOutName"></span></td>
+        <td colspan="2">職務代理人：<span id="pfOutProxy"></span></td>
+      </tr>
+      <tr><td colspan="5" class="pf-label-cell">請假事由</td></tr>
+      <tr>
+        <td colspan="5" class="pf-checkbox-row">
+          婚假<span id="pfOutChkMarriage" class="pf-checkbox"></span>
+          事假<span id="pfOutChkPersonal" class="pf-checkbox"></span>
+          病假<span id="pfOutChkSick" class="pf-checkbox"></span>
+          喪假<span id="pfOutChkFuneral" class="pf-checkbox"></span>
+          　（婚、病、喪假請檢附相關證明文件）
+        </td>
+      </tr>
+      <tr><td colspan="5">請假日期：自　<span id="pfOutStart"></span>　起</td></tr>
+      <tr><td colspan="5">　　　　　至　<span id="pfOutEnd"></span>　止</td></tr>
+      <tr><td colspan="5">請假日時數：共計　<span id="pfOutDays"></span>　天　<span id="pfOutHours"></span>　時</td></tr>
+      <tr><td colspan="5" class="pf-handover-cell">交辦事項：<span id="pfOutHandover"></span></td></tr>
+      <tr class="pf-sign-row">
+        <td colspan="2">董事長</td>
+        <td colspan="1">總經理</td>
+        <td colspan="2">經理</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<footer class="pagefoot">
+  資料來源：Google 試算表「員工休假管理表」・列印或下載請用上方按鈕
+</footer>
+
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
