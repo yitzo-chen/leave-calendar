@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title id="pageTitle">施工日報填寫系統</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23C8630A'/%3E%3Ctext x='50' y='68' font-size='50' text-anchor='middle' fill='white' font-family='Arial'%3E日%3C/text%3E%3C/svg%3E">
-<link rel="stylesheet" href="style.css?v=20260921b">
+<link rel="stylesheet" href="style.css?v=20260922b">
 </head>
 <body>
 <header class="topbar">
@@ -122,6 +122,20 @@
       <p id="passwordHint" class="field-hint">請先輸入密碼才能送出</p>
     </section>
 
+    <section class="card" id="internalSection" hidden>
+      <h2>內部記錄 <span class="card-badge">不會列印，僅後台查看</span></h2>
+
+      <div class="pick-head"><span>類別</span><span>內容說明</span><span>時間</span><span>備註</span><span></span></div>
+      <div id="pickList"></div>
+      <datalist id="pickCategoryList"></datalist>
+      <button type="button" id="addPickBtn" class="ghost-btn">＋新增選工</button>
+
+      <hr class="card-divider">
+
+      <div id="noteList"></div>
+      <button type="button" id="addNoteBtn" class="ghost-btn">＋新增備註</button>
+    </section>
+
     <div id="formStatus" class="form-status" hidden></div>
     <div class="submit-bar">
       <button type="submit" id="submitBtn" class="action-btn action-primary">送出／更新本日日報</button>
@@ -223,6 +237,6 @@
 </div>
 
 <script src="config.js?v=20260921a"></script>
-<script src="app.js?v=20260921b"></script>
+<script src="app.js?v=20260922e"></script>
 </body>
 </html>

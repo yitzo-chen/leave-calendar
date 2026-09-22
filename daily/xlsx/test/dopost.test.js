@@ -19,6 +19,7 @@ function baseSheets() {
     "日報頭": [HDR, ["2026-09-20", "雨", "施工", "第三天", "", "", "王", "c", "t", "甲", "甲", "乙", "乙"]],
     "日報記錄": [["日期", "項目名稱", "上午", "下午", "clientId", "更新時間"], ["2026-09-20", "公司工", 4, 4, "c", "t"]],
     "本工出勤": [["日期", "人員名稱", "上午", "下午", "上午加班", "下午加班", "加班原因", "clientId", "更新時間"]],
+    "內部記錄": [["日期", "類型", "類別", "內容", "時間", "備註", "clientId", "更新時間"]],
   };
 }
 
@@ -40,6 +41,7 @@ function makeEnv(opts) {
       };
     },
     deleteRow: (r) => { data[n].splice(r - 1, 1); },
+    appendRow: (arr) => { data[n].push(arr.slice()); },
   });
   env.ctx.SpreadsheetApp = { getActiveSpreadsheet: () => ({ getId: () => "SS1", getSheetByName: (n) => (data[n] ? sheet(n) : null) }) };
   env.ctx.LockService = { getScriptLock: () => ({ waitLock() {}, releaseLock() { env.state.released = (env.state.released || 0) + 1; } }) };

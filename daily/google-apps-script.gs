@@ -9,6 +9,7 @@ var SHEET_RECORD = "日報記錄";
 var SHEET_HEADER = "日報頭";
 var SHEET_BASIC = "基本資料";
 var SHEET_ATTENDANCE = "本工出勤";
+var SHEET_INTERNAL = "內部記錄"; // 選工/備註兩種日誌型記錄，僅後台查看，不進列印/xlsx
 
 // ---------- 一次性設定：建立所有分頁結構（重複執行不會清空既有資料，只補齊缺的分頁/表頭） ----------
 function setupSheets() {
@@ -61,6 +62,19 @@ function setupSheets() {
     ]]);
   }
   setDateColumnText(attendance);
+
+  var internal = ss.getSheetByName(SHEET_INTERNAL) || ss.insertSheet(SHEET_INTERNAL);
+  if (internal.getRange(1, 1).getValue() === "") {
+    internal.getRange(1, 1, 1, 8).setValues([[
+      "日期", "類型", "類別", "內容", "時間", "備註", "clientId", "更新時間",
+    ]]);
+    var typeRule = SpreadsheetApp.newDataValidation().requireValueInList(["選工", "備註"], true).build();
+    internal.getRange(2, 2, 500, 1).setDataValidation(typeRule);
+    // 類別（C 欄）改自由文字，不設下拉限制：網頁端可自訂新分類，後台也能直接手打
+    var pickTimeRule = SpreadsheetApp.newDataValidation().requireValueInList(["上午", "下午", "全天"], true).build();
+    internal.getRange(2, 5, 500, 1).setDataValidation(pickTimeRule);
+  }
+  setDateColumnText(internal);
 }
 
 // 日期欄（A 欄）第 2 列起到分頁目前的最後一列全設純文字（不再只涵蓋前 999 列）。
@@ -282,6 +296,7 @@ function doPost(e) {
     // 只有這兩份名單裡的資料才會被刪除，沒被列出的既有資料一律不動，避免舊頁面或兩人同天分填時互相蓋掉。
     var clearItems = Array.isArray(data.clearItems) ? data.clearItems : [];
     var removeAttendance = Array.isArray(data.removeAttendance) ? data.removeAttendance : [];
+    var internalNotes = Array.isArray(data.internalNotes) ? data.internalNotes : [];
 
     if (!date) return respond({ ok: false, error: "缺少日期" });
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return respond({ ok: false, error: "日期格式錯誤" });
@@ -347,7 +362,30 @@ function doPost(e) {
     }
     if (dupNames.length) throw validationError("本工出勤人員姓名重複：" + dupNames.join("、"));
 
-    if (firstMissingSheet(ss, [SHEET_HEADER, SHEET_RECORD, SHEET_ATTENDANCE])) return respond({ ok: false, error: NOT_SETUP_ERROR });
+    // ---- 內部記錄：選工（結構化）或備註（純文字）兩種列，僅後台查看，不進列印/xlsx ----
+    var cleanInternal = [];
+    for (var n = 0; n < internalNotes.length; n++) {
+      var note = internalNotes[n];
+      if (!note || typeof note !== "object" || Array.isArray(note)) throw validationError("第 " + (n + 1) + " 筆內部記錄格式錯誤");
+      var noteType = String(note.type || "").trim();
+      if (["選工", "備註"].indexOf(noteType) === -1) throw validationError("第 " + (n + 1) + " 筆內部記錄類型錯誤");
+      var noteContent = checkText(note.content, "內部記錄內容", MAX_LONG_TEXT, true);
+      if (!noteContent) continue; // 沒填內容的列不寫入
+      if (noteType === "選工") {
+        var noteCategory = checkText(note.category, "選工記錄類別", MAX_SHORT_TEXT, true);
+        if (!noteCategory) throw validationError("第 " + (n + 1) + " 筆選工記錄缺少類別");
+        var noteTime = String(note.time || "").trim();
+        if (["上午", "下午", "全天"].indexOf(noteTime) === -1) throw validationError("第 " + (n + 1) + " 筆選工記錄時間錯誤");
+        cleanInternal.push({
+          type: noteType, category: noteCategory, content: noteContent, time: noteTime,
+          remark: checkText(note.remark, "選工記錄備註", MAX_SHORT_TEXT),
+        });
+      } else {
+        cleanInternal.push({ type: noteType, category: "", content: noteContent, time: "", remark: "" });
+      }
+    }
+
+    if (firstMissingSheet(ss, [SHEET_HEADER, SHEET_RECORD, SHEET_ATTENDANCE, SHEET_INTERNAL])) return respond({ ok: false, error: NOT_SETUP_ERROR });
 
     // ---- upsert 日報頭：同一天已有資料就覆蓋，沒有就新增 ----
     var headerSheet = ss.getSheetByName(SHEET_HEADER);
@@ -392,6 +430,16 @@ function doPost(e) {
       attSheet.getRange(aRow, 1, 1, aVals.length).setValues([aVals]);
     }
 
+    // ---- 內部記錄：只新增，不刪除/覆蓋既有資料——這張表刻意獨立於日報的送出/修改之外，
+    // 要修改或刪除既有內容，請直接到後台試算表編輯，不受日報重新送出影響。
+    var internalSheet = ss.getSheetByName(SHEET_INTERNAL);
+    for (var n2 = 0; n2 < cleanInternal.length; n2++) {
+      var ni = cleanInternal[n2];
+      internalSheet.appendRow([
+        date, ni.type, sanitizeCell(ni.category), sanitizeCell(ni.content), ni.time, sanitizeCell(ni.remark), clientId, now,
+      ]);
+    }
+
     // ---- 更新雲端 xlsx（xlsx-drive.gs）：已持有 ScriptLock，內部不再取鎖；失敗不影響日報送出 ----
     var xlsx;
     try {
@@ -421,6 +469,7 @@ function doGet(e) {
     cumulative: [SHEET_LIST, SHEET_RECORD],
     reporters: [SHEET_HEADER],
     peopleNames: [SHEET_ATTENDANCE],
+    internalCategories: [SHEET_INTERNAL],
   };
   if (Object.prototype.hasOwnProperty.call(neededSheets, action) && firstMissingSheet(ss, neededSheets[action])) {
     return respond({ ok: false, error: NOT_SETUP_ERROR });
@@ -532,6 +581,22 @@ function doGet(e) {
     return respond({ ok: true, names: pNames });
   }
 
+  // 選工記錄「類別」輸入框的建議清單：固定 4 個預設值 + 後台曾經用過的自訂值（依出現順序，不重複）
+  if (action === "internalCategories") {
+    var categories = ["工種", "機具", "材料", "其他"];
+    var seenCat = Object.create(null);
+    categories.forEach(function (c) { seenCat[c] = true; });
+    var internalSheet3 = ss.getSheetByName(SHEET_INTERNAL);
+    var internalLastRow3 = internalSheet3.getLastRow();
+    if (internalLastRow3 >= 2) {
+      internalSheet3.getRange(2, 3, internalLastRow3 - 1, 1).getValues().forEach(function (r) {
+        var c = unsanitizeCell(r[0]).trim();
+        if (c && !seenCat[c]) { seenCat[c] = true; categories.push(c); }
+      });
+    }
+    return respond({ ok: true, names: categories });
+  }
+
   // 目前 xlsx 輸出檔（施工日報彙整.xlsx）的網址；檔案還沒產生（尚未送出過日報）時 url 為空字串
   if (action === "xlsxUrl") {
     try {
@@ -638,7 +703,8 @@ function adminDeleteDay() {
   var resp = ui.prompt(
     "刪除某天日報資料",
     "請輸入要刪除的日期（例如 2026-09-21 或民國 115.9.21）。\n\n" +
-    "會刪除該天在「日報頭」「日報記錄」「本工出勤」的資料，並從 xlsx 移除該天的分頁。",
+    "會刪除該天在「日報頭」「日報記錄」「本工出勤」的資料，並從 xlsx 移除該天的分頁。\n" +
+    "（「內部記錄」分頁不受影響，如需修改請直接到後台編輯）",
     ui.ButtonSet.OK_CANCEL
   );
   if (resp.getSelectedButton() !== ui.Button.OK) return;
@@ -664,7 +730,8 @@ function adminDeleteDay() {
     "・日報頭　　 " + n.header + " 列\n" +
     "・日報記錄　 " + n.record + " 列\n" +
     "・本工出勤　 " + n.attendance + " 列\n" +
-    "・xlsx 分頁「" + sheetName + "」：" + (n.xlsx ? "會移除（之後日期的累計會重新計算）" : "沒有") + "\n\n" +
+    "・xlsx 分頁「" + sheetName + "」：" + (n.xlsx ? "會移除（之後日期的累計會重新計算）" : "沒有") + "\n" +
+    "（「內部記錄」分頁不受影響）\n\n" +
     "刪除後無法在網頁上復原（可用 Google 試算表的「檔案 → 版本記錄」還原）。\n確定要刪除嗎？";
   if (ui.alert("確認刪除 " + date, confirmText, ui.ButtonSet.YES_NO) !== ui.Button.YES) return;
 

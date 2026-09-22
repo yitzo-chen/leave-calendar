@@ -127,6 +127,40 @@ main { max-width: 720px; margin: 0 auto; padding: 20px; }
   margin-bottom: 16px;
 }
 .card h2 { font-size: 14px; margin: 0 0 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .06em; }
+.card-badge { text-transform: none; letter-spacing: normal; font-size: 11px; font-weight: normal; margin-left: 8px; padding: 2px 8px; border-radius: 999px; background: var(--border); color: var(--text-muted); vertical-align: middle; }
+.card-divider { border: none; border-top: 1px solid var(--border); margin: 16px 0 12px; }
+
+.pick-head, .pick-row {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr) 64px minmax(0, 1fr) 28px;
+  gap: 8px;
+  align-items: center;
+}
+.pick-head { font-size: 11px; color: var(--text-muted); padding: 0 2px 4px; }
+.pick-row { padding: 4px 2px; }
+.pick-row select, .pick-row input[type="text"] {
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 6px;
+  width: 100%;
+}
+.note-row { display: grid; grid-template-columns: minmax(0, 1fr) 28px; gap: 8px; align-items: center; padding: 4px 2px; }
+.note-row input[type="text"] {
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 8px;
+  width: 100%;
+}
+.pick-row .remove-btn, .note-row .remove-btn { border: none; background: transparent; color: var(--text-muted); cursor: pointer; font-size: 15px; }
+.pick-row .remove-btn:hover, .note-row .remove-btn:hover { color: var(--danger); }
 
 .card label {
   display: flex;

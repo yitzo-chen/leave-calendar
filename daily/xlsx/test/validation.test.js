@@ -23,6 +23,7 @@ function baseSheets() {
     "日報頭": [HDR],
     "日報記錄": [["日期", "項目名稱", "上午", "下午", "clientId", "更新時間"]],
     "本工出勤": [["日期", "人員名稱", "上午", "下午", "上午加班", "下午加班", "加班原因", "clientId", "更新時間"]],
+    "內部記錄": [["日期", "類型", "類別", "內容", "時間", "備註", "clientId", "更新時間"]],
   };
 }
 
@@ -63,7 +64,7 @@ const sub = (o) => Object.assign({
   items: [{ name: "公司工", am: 1, pm: 1 }], attendance: [{ name: "林二", am: true, pm: true, amHours: 1, pmHours: 0, reason: "趕工" }],
 }, o || {});
 // 拒絕且完全沒寫入任何資料
-const rejected = (env, r, re) => (r.ok === false && (!re || re.test(r.error)) && env.rows("日報頭") === 0 && env.rows("日報記錄") === 0 && env.rows("本工出勤") === 0) || JSON.stringify({ r, h: env.rows("日報頭"), rec: env.rows("日報記錄"), att: env.rows("本工出勤") });
+const rejected = (env, r, re) => (r.ok === false && (!re || re.test(r.error)) && env.rows("日報頭") === 0 && env.rows("日報記錄") === 0 && env.rows("本工出勤") === 0 && env.rows("內部記錄") === 0) || JSON.stringify({ r, h: env.rows("日報頭"), rec: env.rows("日報記錄"), att: env.rows("本工出勤"), internal: env.rows("內部記錄") });
 
 (function main() {
   T("V1", "未知 action（deleteAll）被拒，不寫入；submit / addItem 仍正常", () => {

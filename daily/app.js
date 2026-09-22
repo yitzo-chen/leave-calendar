@@ -106,6 +106,59 @@
       .filter((a) => a.name);
   }
 
+  // ---------- 內部記錄：選工（結構化）或備註（純文字）兩種列，僅後台查看，不進列印/xlsx ----------
+  const PICK_TIMES = ["上午", "下午", "全天"];
+
+  function buildOptions(values, selected) {
+    return values.map((v) => `<option value="${v}"${v === selected ? " selected" : ""}>${v}</option>`).join("");
+  }
+
+  function addPickRow(data) {
+    const row = document.createElement("div");
+    row.className = "pick-row";
+    row.innerHTML = `
+      <input type="text" class="pick-category" list="pickCategoryList" maxlength="20" placeholder="類別">
+      <input type="text" class="pick-content" maxlength="60" placeholder="內容說明">
+      <select class="pick-time">${buildOptions(PICK_TIMES, data && data.time)}</select>
+      <input type="text" class="pick-remark" maxlength="60" placeholder="備註（選填）">
+      <button type="button" class="remove-btn">✕</button>
+    `;
+    row.querySelector(".pick-category").value = (data && data.category) || "";
+    row.querySelector(".pick-content").value = (data && data.content) || "";
+    row.querySelector(".pick-remark").value = (data && data.remark) || "";
+    row.querySelector(".remove-btn").addEventListener("click", () => row.remove());
+    el("pickList").appendChild(row);
+  }
+
+  function addNoteRow(data) {
+    const row = document.createElement("div");
+    row.className = "note-row";
+    row.innerHTML = `<input type="text" class="note-content" maxlength="2000" placeholder="想記錄的內容"><button type="button" class="remove-btn">✕</button>`;
+    row.querySelector(".note-content").value = (data && data.content) || "";
+    row.querySelector(".remove-btn").addEventListener("click", () => row.remove());
+    el("noteList").appendChild(row);
+  }
+
+  function clearInternalRows() {
+    el("pickList").innerHTML = "";
+    el("noteList").innerHTML = "";
+  }
+
+  function collectInternalNotes() {
+    const picks = Array.from(el("pickList").querySelectorAll(".pick-row")).map((row) => ({
+      type: "選工",
+      category: row.querySelector(".pick-category").value.trim(),
+      content: row.querySelector(".pick-content").value.trim(),
+      time: row.querySelector(".pick-time").value,
+      remark: row.querySelector(".pick-remark").value.trim(),
+    })).filter((p) => p.content);
+    const notes = Array.from(el("noteList").querySelectorAll(".note-row")).map((row) => ({
+      type: "備註",
+      content: row.querySelector(".note-content").value.trim(),
+    })).filter((n) => n.content);
+    return picks.concat(notes);
+  }
+
   // ---------- 出工/機具/材料：新增項目 ----------
   // 新增成功後直接把該筆項目插進畫面，不整批重新讀取設定——
   // 一來避免 Sheets 寫入後緊接著讀取可能的短暫延遲讓新項目「看起來沒加成功」，
@@ -250,6 +303,7 @@
   async function loadReporters() {
     await fillDatalist("reporters", "reporterNames");
     await fillDatalist("peopleNames", "peopleNames");
+    await fillDatalist("internalCategories", "pickCategoryList");
   }
 
   let loadDaySeq = 0; // 快速連切日期時，只採用最後一次請求的回應
@@ -262,6 +316,7 @@
     status.textContent = "讀取中…";
     clearItemInputs();
     clearAttendanceRows();
+    clearInternalRows();
     el("fWeather").value = "晴";
     el("fStatus").value = "施工";
     el("fTodayWork").value = "";
@@ -311,6 +366,8 @@
         loadedAttendanceNames.push(String(a.name).trim());
       });
     }
+
+    // 內部記錄卡片刻意不預填既有資料（送出只會新增、不會覆蓋，畫面每次切換日期都是空白的新增入口）
 
     dayLoaded = !!dayResult.ok;
     syncSubmitLock();
@@ -504,6 +561,18 @@
     el("laborAddBtn").addEventListener("click", () => addItemPrompt("工種", "laborNewName"));
     el("equipmentAddBtn").addEventListener("click", () => addItemPrompt("機具", "equipmentNewName"));
     el("materialAddBtn").addEventListener("click", () => addItemPrompt("材料", "materialNewName"));
+    el("addPickBtn").addEventListener("click", () => addPickRow());
+    el("addNoteBtn").addEventListener("click", () => addNoteRow());
+
+    // 內部記錄卡片預設隱藏，只在電腦按 Ctrl+Alt+I 才切換顯示（僅供工地主任查看，手機不支援組合鍵）
+    document.addEventListener("keydown", (e) => {
+      if (e.ctrlKey && e.altKey && e.key.toLowerCase() === "i") {
+        e.preventDefault();
+        const sec = el("internalSection");
+        sec.hidden = !sec.hidden;
+        if (!sec.hidden) sec.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    });
     el("addAttendanceBtn").addEventListener("click", () => addAttendanceRow());
     el("openXlsxBtn").addEventListener("click", openXlsx);
     fetchXlsxUrl().then((r) => { if (r.url) xlsxUrl = r.url; }); // 先取好網址，點擊時可直接開啟
@@ -547,6 +616,7 @@
         },
         items: collectItems(),
         attendance: collectAttendance(),
+        internalNotes: collectInternalNotes(),
         // 載入時有數字、現在兩格都清空的項目；載入時存在、現在已不在名單裡的人員 → 後端才會刪除
         clearItems: collectItems().filter((it) => !it.am && !it.pm && loadedItemNames.includes(it.name)).map((it) => it.name),
         removeAttendance: loadedAttendanceNames.filter((n) => !collectAttendance().some((a) => a.name === n)),
@@ -556,6 +626,7 @@
         const result = await apiPost(payload);
         if (!result.ok) throw new Error(result.error || "送出失敗");
         showSubmitResult(result.xlsx);
+        el("internalSection").hidden = true; // 送出成功後自動收合，平常畫面上預設看不到，只有按 Ctrl+Alt+I 當下才會打開
         await loadDay(date);
       } catch (err) {
         setStatus("送出失敗：" + err.message + "（若一直失敗，稍等半分鐘再試一次）", "error");
