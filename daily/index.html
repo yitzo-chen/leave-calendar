@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title id="pageTitle">施工日報填寫系統</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23C8630A'/%3E%3Ctext x='50' y='68' font-size='50' text-anchor='middle' fill='white' font-family='Arial'%3E日%3C/text%3E%3C/svg%3E">
-<link rel="stylesheet" href="style.css?v=20260922b">
+<link rel="stylesheet" href="style.css?v=20260923b">
 </head>
 <body>
 <header class="topbar">
@@ -22,6 +22,38 @@
 <div id="errorBanner" class="banner banner-error" hidden></div>
 
 <main>
+  <div class="case-bar">
+    <label for="fCase">案場</label>
+    <select id="fCase"></select>
+    <button type="button" id="addCaseBtn" class="ghost-btn">＋新增案場</button>
+    <span id="caseLoadStatus" class="load-status"></span>
+  </div>
+
+  <section class="card" id="addCaseSection" hidden>
+    <h2>新增案場</h2>
+    <div class="field-row">
+      <label>案場代碼<input id="ncCode" type="text" maxlength="30" placeholder="英數字/底線/連字號，例如 h2" autocomplete="off"></label>
+      <label>案場名稱<input id="ncName" type="text" maxlength="100" placeholder="例如 中鼎H2工區" autocomplete="off"></label>
+    </div>
+    <div class="field-row">
+      <label>業主<input id="ncOwner" type="text" maxlength="100" autocomplete="off"></label>
+      <label>公司名稱<input id="ncCompany" type="text" maxlength="100" autocomplete="off"></label>
+    </div>
+    <div class="field-row">
+      <label>合約金額（元）<input id="ncContract" type="text" maxlength="100" autocomplete="off"></label>
+      <label>開工日期（YYYY/MM/DD）<input id="ncStartDate" type="text" maxlength="100" placeholder="2026/01/01" autocomplete="off"></label>
+    </div>
+    <label>工種/機具/材料清單
+      <select id="ncCopyFrom"></select>
+    </label>
+    <p class="field-hint">選「不複製」則新案場從空清單開始，之後可在各分類用「＋新增項目」自己加；各案場的清單彼此獨立。</p>
+    <div class="submit-bar">
+      <button type="button" id="ncCancelBtn" class="ghost-btn">取消</button>
+      <button type="button" id="ncSubmitBtn" class="action-btn action-primary">建立案場</button>
+    </div>
+    <div id="ncStatus" class="form-status" hidden></div>
+  </section>
+
   <form id="reportForm">
     <div class="date-bar">
       <button type="button" id="prevDayBtn" class="icon-btn" aria-label="前一天">‹</button>
@@ -237,6 +269,6 @@
 </div>
 
 <script src="config.js?v=20260921a"></script>
-<script src="app.js?v=20260922e"></script>
+<script src="app.js?v=20260923b"></script>
 </body>
 </html>

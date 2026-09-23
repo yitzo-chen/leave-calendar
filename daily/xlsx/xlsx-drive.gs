@@ -1,14 +1,20 @@
 /**
  * 日報 xlsx 雲端存檔（Apps Script 端）。
- * 依賴：xlsx-builder.gs（XlsxBuilder）＋ google-apps-script.gs 內的 SHEET_* 常數與 normalizeDate / unsanitizeCell。
+ * 依賴：xlsx-builder.gs（XlsxBuilder）＋ google-apps-script.gs 內的 SHEET_* / CASE_COL_* 常數與 normalizeDate / unsanitizeCell / getCaseRow_。
  *
- * 流程：讀試算表資料 → 用 Drive 上的「日報範本.xlsx」產生某天（及之後已存在日期）的分頁
- *       → 組成一個 xlsx 存回同資料夾的「施工日報彙整.xlsx」。
- * 對外入口：xlsxUpdateForDate(date)、xlsxRebuildAll()、xlsxSelfTest()。
+ * 流程：讀試算表資料（依案場過濾） → 用 Drive 上共用的「日報範本.xlsx」產生某天（及之後已存在日期）的分頁
+ *       → 組成一個 xlsx 存回同資料夾、該案場專屬的「施工日報彙整_<案場名稱>.xlsx」。
+ * 各案場格式相同、共用同一份範本，只有輸出檔案、基本資料、資料列各自獨立（見 project_daily_report_webify 決議）。
+ * 對外入口：xlsxUpdateForDate(date, caseId, caseInfo)、xlsxRebuildAll(caseId?)、xlsxSelfTest()。
  */
 var XLSX_TEMPLATE_NAME = "日報範本.xlsx";
-var XLSX_OUTPUT_NAME = "施工日報彙整.xlsx";
 var XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+/** 該案場的輸出檔檔名（案場名稱可能之後改名，檔名以目前的名稱為準） */
+function xlsxOutputName_(caseId, caseInfo) {
+  var label = (caseInfo && caseInfo.name) ? caseInfo.name : caseId;
+  return "施工日報彙整_" + label + ".xlsx";
+}
 
 // ---------- Drive 與 zip ----------
 function xlsxFolder_() {
@@ -47,20 +53,22 @@ function xlsxLoadTemplate_() {
   return XlsxBuilder.prepareTemplate(parts);
 }
 
-/** 取得輸出檔（先看記錄的檔案 ID，再依名稱找），沒有回傳 null */
-function xlsxFindOutput_() {
+/** 取得該案場的輸出檔（先看記錄的檔案 ID，再依名稱找），沒有回傳 null */
+function xlsxFindOutput_(caseId, caseInfo) {
   var props = PropertiesService.getScriptProperties();
-  var id = props.getProperty("XLSX_FILE_ID");
+  var propKey = "XLSX_FILE_ID_" + caseId;
+  var id = props.getProperty(propKey);
   if (id) {
     try {
       var f = DriveApp.getFileById(id);
       if (!f.isTrashed()) return f;
     } catch (e) { /* 檔案已被刪除，往下重新找 */ }
   }
-  var it = xlsxFolder_().getFilesByName(XLSX_OUTPUT_NAME);
+  var outputName = xlsxOutputName_(caseId, caseInfo);
+  var it = xlsxFolder_().getFilesByName(outputName);
   if (it.hasNext()) {
     var found = it.next();
-    props.setProperty("XLSX_FILE_ID", found.getId());
+    props.setProperty(propKey, found.getId());
     return found;
   }
   return null;
@@ -78,20 +86,20 @@ function xlsxOverwrite_(file, blob) {
   if (res.getResponseCode() !== 200) throw new Error("更新 xlsx 失敗（HTTP " + res.getResponseCode() + "）：" + res.getContentText().slice(0, 200));
 }
 
-function xlsxSave_(blob) {
-  var file = xlsxFindOutput_();
+function xlsxSave_(blob, caseId, caseInfo) {
+  var file = xlsxFindOutput_(caseId, caseInfo);
   if (file) {
     xlsxOverwrite_(file, blob);
     return file;
   }
-  var created = xlsxFolder_().createFile(blob.setName(XLSX_OUTPUT_NAME));
-  PropertiesService.getScriptProperties().setProperty("XLSX_FILE_ID", created.getId());
+  var created = xlsxFolder_().createFile(blob.setName(xlsxOutputName_(caseId, caseInfo)));
+  PropertiesService.getScriptProperties().setProperty("XLSX_FILE_ID_" + caseId, created.getId());
   return created;
 }
 
-// ---------- 讀取試算表資料 ----------
-/** 一次讀進所有需要的資料（日報頭 / 日報記錄 / 本工出勤 / 清單 / 基本資料），並算好逐日累計 */
-function xlsxLoadDb_() {
+// ---------- 讀取試算表資料（依案場過濾） ----------
+/** 一次讀進某案場需要的資料（日報頭 / 日報記錄 / 本工出勤 / 清單，皆依「案場」欄過濾＋案場設定的基本資料），並算好逐日累計 */
+function xlsxLoadDb_(caseId, caseInfo) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   function rows(name) { // 資料分頁：第 1 列是表頭，略過
     var v = ss.getSheetByName(name).getDataRange().getValues();
@@ -101,10 +109,16 @@ function xlsxLoadDb_() {
   // 以日期/項目名稱當 key 的物件用無原型物件，避免 constructor / __proto__ 等名稱汙染
   var db = { headers: {}, recordsByDate: {}, attendanceByDate: {}, catalog: [], categoryByName: Object.create(null), basic: {}, records: [], warnings: [] };
 
-  // 基本資料分頁沒有表頭（第 1 列就是「業主」），不能用 rows()
-  ss.getSheetByName(SHEET_BASIC).getDataRange().getValues().forEach(function (r) { db.basic[r[0]] = r[1]; });
+  db.basic = {
+    "業主": (caseInfo && caseInfo.owner) || "",
+    "工程名稱": (caseInfo && caseInfo.name) || "",
+    "合約金額（元）": (caseInfo && caseInfo.contract) || "",
+    "開工日期（YYYY/MM/DD）": (caseInfo && caseInfo.startDate) || "",
+    "公司名稱": (caseInfo && caseInfo.company) || "",
+  };
 
   rows(SHEET_LIST).forEach(function (r) {
+    if (String(r[CASE_COL_LIST - 1] || "").trim() !== caseId) return;
     var name = unsanitizeCell(r[1]).trim();
     if (!name) return;
     db.catalog.push({ category: r[0], name: name, active: String(r[3]).trim().toUpperCase() === "TRUE" });
@@ -112,6 +126,7 @@ function xlsxLoadDb_() {
   });
 
   rows(SHEET_HEADER).forEach(function (r) {
+    if (String(r[CASE_COL_HEADER - 1] || "").trim() !== caseId) return;
     var d = normalizeDate(r[0]);
     if (!d) return;
     db.headers[d] = {
@@ -121,6 +136,7 @@ function xlsxLoadDb_() {
   });
 
   rows(SHEET_RECORD).forEach(function (r) {
+    if (String(r[CASE_COL_RECORD - 1] || "").trim() !== caseId) return;
     var d = normalizeDate(r[0]);
     if (!d) return;
     var rec = { date: d, name: unsanitizeCell(r[1]).trim(), am: Number(r[2]) || 0, pm: Number(r[3]) || 0 };
@@ -129,6 +145,7 @@ function xlsxLoadDb_() {
   });
 
   rows(SHEET_ATTENDANCE).forEach(function (r) {
+    if (String(r[CASE_COL_ATTENDANCE - 1] || "").trim() !== caseId) return;
     var d = normalizeDate(r[0]);
     if (!d) return;
     (db.attendanceByDate[d] = db.attendanceByDate[d] || []).push({
@@ -158,17 +175,17 @@ function xlsxDayData_(db, date) {
 
 // ---------- 對外入口 ----------
 /**
- * 更新雲端 xlsx：重寫指定日期，以及檔案中「不早於該日」的所有分頁（後面日期的累計會跟著變）。
+ * 更新某案場的雲端 xlsx：重寫指定日期，以及該檔案中「不早於該日」的所有分頁（後面日期的累計會跟著變）。
  * 指定日期已沒有日報頭（資料被刪除）時，會移除該日分頁；分頁全被移除時把檔案丟垃圾桶（回傳 removed:true）。
- * date 為 null 時，依日報頭的全部日期整個重建。
+ * date 為 null 時，依該案場日報頭的全部日期整個重建。
  * 失敗時拋出例外，由呼叫端決定是否影響日報送出。
  * @return {ok, fileId, url, sheets, rebuilt, warnings}
  */
-function xlsxRun_(date) {
-  var db = xlsxLoadDb_();
+function xlsxRun_(date, caseId, caseInfo) {
+  var db = xlsxLoadDb_(caseId, caseInfo);
   var template = xlsxLoadTemplate_();
   var tsheet = template["xl/worksheets/sheet1.xml"];
-  var file = date ? xlsxFindOutput_() : null;
+  var file = date ? xlsxFindOutput_(caseId, caseInfo) : null;
   var existing = [], full = !date;
   if (file) {
     var oldParts = xlsxUnzip_(file.getBlob());
@@ -204,7 +221,7 @@ function xlsxRun_(date) {
     // 最後一個分頁也被移除、整份 xlsx 已沒有內容：把檔案丟垃圾桶（可還原），下次送出日報時會用範本重建
     if (date && file) {
       file.setTrashed(true);
-      PropertiesService.getScriptProperties().deleteProperty("XLSX_FILE_ID");
+      PropertiesService.getScriptProperties().deleteProperty("XLSX_FILE_ID_" + caseId);
       return { ok: true, removed: true, sheets: 0, rebuilt: 0, full: full, warnings: warnings };
     }
     throw new Error("沒有任何日期可寫入 xlsx");
@@ -212,29 +229,50 @@ function xlsxRun_(date) {
   var active = date ? XlsxBuilder.sheetNameForDate(date) : null;
   if (active && !byName[active]) active = null; // 該日分頁已被移除，改用預設的作用中分頁
   var parts = XlsxBuilder.assembleWorkbook(template, sheets, active);
-  var saved = xlsxSave_(xlsxZip_(parts, XLSX_OUTPUT_NAME));
+  var saved = xlsxSave_(xlsxZip_(parts, xlsxOutputName_(caseId, caseInfo)), caseId, caseInfo);
   return { ok: true, fileId: saved.getId(), url: saved.getUrl(), sheets: sheets.length, rebuilt: rebuilt, full: full, warnings: warnings };
 }
 
-function xlsxUpdateForDate(date) { return xlsxRun_(date); }
+function xlsxUpdateForDate(date, caseId, caseInfo) { return xlsxRun_(date, caseId, caseInfo); }
 
-/** 目前的 xlsx 內有沒有該日期的分頁（後台管理「刪除某天資料」用來判斷 xlsx 是否要處理） */
-function xlsxHasSheetForDate(date) {
-  var file = xlsxFindOutput_();
+/** 該案場目前的 xlsx 內有沒有該日期的分頁（後台管理「刪除某天資料」用來判斷 xlsx 是否要處理） */
+function xlsxHasSheetForDate(date, caseId, caseInfo) {
+  var file = xlsxFindOutput_(caseId, caseInfo);
   if (!file) return false;
   var name = XlsxBuilder.sheetNameForDate(date);
   return XlsxBuilder.readSheets(xlsxUnzip_(file.getBlob())).some(function (s) { return s.name === name; });
 }
 
-/** 管理用：依試算表資料整個重建 xlsx（範本改版或檔案被刪除後使用），在編輯器直接執行 */
-function xlsxRebuildAll() {
-  var r = xlsxRun_(null);
+/**
+ * 管理用：依試算表資料整個重建 xlsx（範本改版或檔案被刪除後使用），在編輯器直接執行。
+ * 傳 caseId 只重建該案場；不傳則依「案場設定」把所有啟用中的案場各自重建一次。
+ */
+function xlsxRebuildAll(caseId) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (!caseId) {
+    var caseSheet = ss.getSheetByName(SHEET_CASES);
+    var rows = caseSheet.getDataRange().getValues();
+    rows.shift();
+    var results = [];
+    rows.filter(function (r) { return String(r[2]).trim().toUpperCase() === "TRUE"; })
+      .forEach(function (r) {
+        var id = String(r[0]).trim();
+        var info = getCaseRow_(ss, id);
+        var res = xlsxRun_(null, id, info);
+        results.push({ caseId: id, result: res });
+        Logger.log(id + "：" + JSON.stringify(res));
+      });
+    return results;
+  }
+  var caseInfo = getCaseRow_(ss, caseId);
+  if (!caseInfo) throw new Error("案場不存在或已停用：" + caseId);
+  var r = xlsxRun_(null, caseId, caseInfo);
   Logger.log(JSON.stringify(r));
   return r;
 }
 
 /**
- * 自我測試（不動正式檔）：用範本與假資料產生「施工日報彙整-自我測試.xlsx」，再讀回確認。
+ * 自我測試（不動任何案場的正式檔）：用範本與假資料產生「施工日報彙整-自我測試.xlsx」，再讀回確認。
  * 用來確認 Utilities.zip/unzip 與 Drive 權限在真實環境可用。在編輯器直接執行。
  */
 function xlsxSelfTest() {

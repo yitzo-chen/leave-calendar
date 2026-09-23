@@ -78,6 +78,30 @@ body {
 
 main { max-width: 720px; margin: 0 auto; padding: 20px; }
 
+.case-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+  flex-wrap: wrap;
+}
+.case-bar label { font-size: 13px; font-weight: 600; color: var(--text); }
+.case-bar select {
+  font: inherit;
+  font-size: 14px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 10px;
+  flex: 1 1 auto;
+  max-width: 320px;
+}
+.case-bar select:focus { outline: none; border-color: var(--accent); }
+
 .date-bar {
   display: flex;
   align-items: center;

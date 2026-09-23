@@ -1,4 +1,5 @@
 // doPost 接 xlsx 的測試：node dopost.test.js（需 xlsx(SheetJS) 於 NODE_PATH）
+// 多案場改版後 doPost 一律要求合法的 caseId；這裡固定用一個假案場 "lng"（案場設定裡的唯一啟用列）。
 const fs = require("fs");
 const XLSX = require("xlsx");
 const { makeGlueEnv } = require("./fake-gas.js");
@@ -11,15 +12,18 @@ function T(id, name, fn) {
 }
 const eq = (a, b) => (JSON.stringify(a) === JSON.stringify(b) ? true : "got " + JSON.stringify(a) + " expected " + JSON.stringify(b));
 
+const CASE_ID = "lng";
+const OUTPUT_NAME = "施工日報彙整_測試工程.xlsx";
 const HDR = ["日期", "天氣", "施工狀況", "本日施工項目", "預計明日施工項目", "備註", "填表人", "clientId", "更新時間", "主任(上午)", "主任(下午)", "工安(上午)", "工安(下午)"];
 function baseSheets() {
   return {
     "基本資料": [["業主", "中油"], ["工程名稱", "測試工程"], ["合約金額（元）", ""], ["開工日期（YYYY/MM/DD）", ""], ["公司名稱", ""]],
-    "工種機具材料清單": [["類別", "項目名稱", "工項編號", "啟用中"], ["工種", "公司工", "", "TRUE"], ["工種", "模板工", "", "TRUE"], ["材料", "砂(m³)", "", "TRUE"]],
-    "日報頭": [HDR, ["2026-09-20", "雨", "施工", "第三天", "", "", "王", "c", "t", "甲", "甲", "乙", "乙"]],
-    "日報記錄": [["日期", "項目名稱", "上午", "下午", "clientId", "更新時間"], ["2026-09-20", "公司工", 4, 4, "c", "t"]],
-    "本工出勤": [["日期", "人員名稱", "上午", "下午", "上午加班", "下午加班", "加班原因", "clientId", "更新時間"]],
-    "內部記錄": [["日期", "類型", "類別", "內容", "時間", "備註", "clientId", "更新時間"]],
+    "案場設定": [["案場代碼", "案場名稱", "啟用中", "業主", "合約金額（元）", "開工日期（YYYY/MM/DD）", "公司名稱"], [CASE_ID, "測試工程", "TRUE", "中油", "", "", ""]],
+    "工種機具材料清單": [["類別", "項目名稱", "工項編號", "啟用中", "案場"], ["工種", "公司工", "", "TRUE", CASE_ID], ["工種", "模板工", "", "TRUE", CASE_ID], ["材料", "砂(m³)", "", "TRUE", CASE_ID]],
+    "日報頭": [HDR, ["2026-09-20", "雨", "施工", "第三天", "", "", "王", "c", "t", "甲", "甲", "乙", "乙", CASE_ID]],
+    "日報記錄": [["日期", "項目名稱", "上午", "下午", "clientId", "更新時間", "案場"], ["2026-09-20", "公司工", 4, 4, "c", "t", CASE_ID]],
+    "本工出勤": [["日期", "人員名稱", "上午", "下午", "上午加班", "下午加班", "加班原因", "clientId", "更新時間", "案場"]],
+    "內部記錄": [["日期", "類型", "類別", "內容", "時間", "備註", "clientId", "更新時間", "案場"]],
   };
 }
 
@@ -50,10 +54,10 @@ function makeEnv(opts) {
   env.post = (payload) => JSON.parse(env.call("doPost")({ postData: { contents: JSON.stringify(payload) } }).s);
   return env;
 }
-const F = (env) => Object.values(env.state.files).find((f) => f.name === "施工日報彙整.xlsx" && !f.trashed);
+const F = (env) => Object.values(env.state.files).find((f) => f.name === OUTPUT_NAME && !f.trashed);
 const book = (env) => XLSX.read(F(env).bytes);
 const submit = (date, cong) => ({
-  date, clientId: "cid", header: { weather: "晴", status: "施工", todayWork: "新的一天", reporter: "王", directorAm: "甲", directorPm: "甲", safetyAm: "乙", safetyPm: "乙" },
+  date, caseId: CASE_ID, clientId: "cid", header: { weather: "晴", status: "施工", todayWork: "新的一天", reporter: "王", directorAm: "甲", directorPm: "甲", safetyAm: "乙", safetyPm: "乙" },
   items: [{ name: "公司工", am: cong, pm: cong }], attendance: [{ name: "林二", am: true, pm: true, amHours: 1, pmHours: 0, reason: "趕工" }],
 });
 
@@ -94,7 +98,7 @@ const submit = (date, cong) => ({
   T("P7", "真實容量警告：工種項目超過容量時，warnings 非空且透傳", () => {
     const e2 = makeEnv();
     const list = e2.state.sheetsData["工種機具材料清單"];
-    for (let i = 0; i < 14; i++) list.push(["工種", "工種" + i, "", "TRUE"]);
+    for (let i = 0; i < 14; i++) list.push(["工種", "工種" + i, "", "TRUE", CASE_ID]);
     const p = submit("2026-09-22", 1);
     for (let i = 0; i < 14; i++) p.items.push({ name: "工種" + i, am: 1, pm: 1 });
     const r = e2.post(p);
@@ -103,7 +107,7 @@ const submit = (date, cong) => ({
   T("P8", "缺日期／日期格式錯誤：回錯誤，不呼叫 xlsx", () => {
     const e2 = makeEnv(); let called = 0;
     e2.ctx.xlsxUpdateForDate = () => { called++; return { url: "u" }; };
-    const a = e2.post({ date: "", header: {} }), b = e2.post({ date: "9/21", header: {} });
+    const a = e2.post({ date: "", caseId: CASE_ID, header: {} }), b = e2.post({ date: "9/21", caseId: CASE_ID, header: {} });
     return eq([a.ok, b.ok, called], [false, false, 0]);
   });
   T("P9", "密碼錯誤：被擋，不寫入也不呼叫 xlsx", () => {
@@ -113,11 +117,17 @@ const submit = (date, cong) => ({
     const r = e2.post(Object.assign(submit("2026-09-22", 3), { password: "bad" }));
     return eq([r.ok, called, e2.state.sheetsData["日報頭"].length], [false, 0, 2]);
   });
-  T("P10", "addItem 不觸發 xlsx 更新", () => {
+  T("P10", "案場不存在：回錯誤，不寫入也不呼叫 xlsx", () => {
+    const e2 = makeEnv(); let called = 0;
+    e2.ctx.xlsxUpdateForDate = () => { called++; return { url: "u" }; };
+    const r = e2.post(Object.assign(submit("2026-09-22", 3), { caseId: "不存在的案場" }));
+    return eq([r.ok, /案場不存在或已停用/.test(r.error), called, e2.state.sheetsData["日報頭"].length], [false, true, 0, 2]);
+  });
+  T("P11", "addItem 不觸發 xlsx 更新", () => {
     const e2 = makeEnv(); let called = 0;
     e2.ctx.xlsxUpdateForDate = () => { called++; return { url: "u" }; };
     // addItem 需要 appendRow；本測試假分頁不支援，只驗證進入 addItem 分支前不會走到 xlsx
-    try { e2.post({ action: "addItem", category: "無效", name: "x" }); } catch (e) {}
+    try { e2.post({ action: "addItem", caseId: CASE_ID, category: "無效", name: "x" }); } catch (e) {}
     return called === 0;
   });
 

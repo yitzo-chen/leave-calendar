@@ -7,9 +7,20 @@
 var SHEET_LIST = "工種機具材料清單";
 var SHEET_RECORD = "日報記錄";
 var SHEET_HEADER = "日報頭";
-var SHEET_BASIC = "基本資料";
+var SHEET_BASIC = "基本資料"; // 舊版單一案場的基本資料，已被「案場設定」取代，保留不刪（不使用）
 var SHEET_ATTENDANCE = "本工出勤";
 var SHEET_INTERNAL = "內部記錄"; // 選工/備註兩種日誌型記錄，僅後台查看，不進列印/xlsx
+var SHEET_CASES = "案場設定"; // 多案場：一案場一列，取代舊版單列的「基本資料」
+
+// 各資料表「案場」欄位的欄號（一律補在既有欄位最後面，比照當初新增主任/工安欄位的作法：
+// 不動既有欄位順序、舊資料不用搬移位置，只需要在最後補值）
+var CASE_COL_HEADER = 14;
+var CASE_COL_RECORD = 7;
+var CASE_COL_ATTENDANCE = 10;
+var CASE_COL_INTERNAL = 9;
+var CASE_COL_LIST = 5;
+
+var DEFAULT_CASE_ID = "lng"; // 既有資料（洲際LNG）遷移時要補上的案場代碼
 
 // ---------- 一次性設定：建立所有分頁結構（重複執行不會清空既有資料，只補齊缺的分頁/表頭） ----------
 function setupSheets() {
@@ -26,6 +37,22 @@ function setupSheets() {
     ]);
   }
 
+  // 「案場設定」：一案場一列，取代上面「基本資料」單列的角色。首次建立時，
+  // 從既有「基本資料」的值遷移出一列（案場代碼＝DEFAULT_CASE_ID），之後新增案場只要在這張表加一列即可，不用改程式碼。
+  var cases = ss.getSheetByName(SHEET_CASES) || ss.insertSheet(SHEET_CASES);
+  if (cases.getRange(1, 1).getValue() === "") {
+    var basicVals = basic.getRange(1, 1, 5, 2).getValues();
+    var basicObj = {};
+    basicVals.forEach(function (r) { basicObj[r[0]] = r[1]; });
+    cases.getRange(1, 1, 1, 7).setValues([["案場代碼", "案場名稱", "啟用中", "業主", "合約金額（元）", "開工日期（YYYY/MM/DD）", "公司名稱"]]);
+    cases.getRange(2, 1, 1, 7).setValues([[
+      DEFAULT_CASE_ID, basicObj["工程名稱"] || "", "TRUE",
+      basicObj["業主"] || "", basicObj["合約金額（元）"] || "", basicObj["開工日期（YYYY/MM/DD）"] || "", basicObj["公司名稱"] || "",
+    ]]);
+    var activeRuleC = SpreadsheetApp.newDataValidation().requireValueInList(["TRUE", "FALSE"], true).build();
+    cases.getRange(2, 3, 500, 1).setDataValidation(activeRuleC);
+  }
+
   var list = ss.getSheetByName(SHEET_LIST) || ss.insertSheet(SHEET_LIST);
   if (list.getRange(1, 1).getValue() === "") {
     list.getRange(1, 1, 1, 4).setValues([["類別", "項目名稱", "工項編號", "啟用中"]]);
@@ -35,12 +62,14 @@ function setupSheets() {
     var catRule = SpreadsheetApp.newDataValidation().requireValueInList(["工種", "機具", "材料"], true).build();
     list.getRange(2, 1, 500, 1).setDataValidation(catRule);
   }
+  ensureCaseColumn(list, CASE_COL_LIST);
 
   var record = ss.getSheetByName(SHEET_RECORD) || ss.insertSheet(SHEET_RECORD);
   if (record.getRange(1, 1).getValue() === "") {
     record.getRange(1, 1, 1, 6).setValues([["日期", "項目名稱", "上午", "下午", "clientId", "更新時間"]]);
   }
   setDateColumnText(record); // 日期欄強制純文字，避免Sheets自動轉成日期型別
+  ensureCaseColumn(record, CASE_COL_RECORD);
 
   var header = ss.getSheetByName(SHEET_HEADER) || ss.insertSheet(SHEET_HEADER);
   if (header.getRange(1, 1).getValue() === "") {
@@ -54,6 +83,7 @@ function setupSheets() {
     header.getRange(1, 10, 1, 4).setValues([["主任(上午)", "主任(下午)", "工安(上午)", "工安(下午)"]]);
   }
   setDateColumnText(header);
+  ensureCaseColumn(header, CASE_COL_HEADER);
 
   var attendance = ss.getSheetByName(SHEET_ATTENDANCE) || ss.insertSheet(SHEET_ATTENDANCE);
   if (attendance.getRange(1, 1).getValue() === "") {
@@ -62,6 +92,7 @@ function setupSheets() {
     ]]);
   }
   setDateColumnText(attendance);
+  ensureCaseColumn(attendance, CASE_COL_ATTENDANCE);
 
   var internal = ss.getSheetByName(SHEET_INTERNAL) || ss.insertSheet(SHEET_INTERNAL);
   if (internal.getRange(1, 1).getValue() === "") {
@@ -75,6 +106,23 @@ function setupSheets() {
     internal.getRange(2, 5, 500, 1).setDataValidation(pickTimeRule);
   }
   setDateColumnText(internal);
+  ensureCaseColumn(internal, CASE_COL_INTERNAL);
+}
+
+// 補上「案場」欄位（若表頭已經是「案場」代表已migrate過，跳過）；既有資料列補上 DEFAULT_CASE_ID，
+// 避免遷移前的舊資料（目前只有洲際LNG）變成讀不到案場的孤兒列。
+function ensureCaseColumn(sheet, caseColIndex) {
+  if (sheet.getRange(1, caseColIndex).getValue() === "案場") return;
+  sheet.getRange(1, caseColIndex).setValue("案場");
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return;
+  var range = sheet.getRange(2, caseColIndex, lastRow - 1, 1);
+  var vals = range.getValues();
+  var changed = false;
+  for (var i = 0; i < vals.length; i++) {
+    if (vals[i][0] === "" || vals[i][0] === null) { vals[i][0] = DEFAULT_CASE_ID; changed = true; }
+  }
+  if (changed) range.setValues(vals);
 }
 
 // 日期欄（A 欄）第 2 列起到分頁目前的最後一列全設純文字（不再只涵蓋前 999 列）。
@@ -92,7 +140,7 @@ function ensureRows(sheet, row) {
 }
 
 // 工種/機具/材料清單的起始種子資料，抄自現行 Excel 日報範本的預設項目。
-// 啟用中預設 TRUE；工項編號留空，之後要接成本管理系統時再填。
+// 啟用中預設 TRUE；工項編號留空，之後要接成本管理系統時再填。案場欄留空，setupSheets 會補 DEFAULT_CASE_ID。
 var SEED_ITEMS = [
   ["工種", "公司工", "", "TRUE"],
   ["工種", "鋼筋工(公司)", "", "TRUE"],
@@ -169,26 +217,44 @@ function normalizeDate(v) {
   return String(v || "").trim();
 }
 
-// ---------- 找日期欄位等於指定值的列（從第2列開始），找不到回傳 -1 ----------
-function findRowByKey(sheet, keyCol, keyVal) {
+// ---------- 案場：查有效案場（依代碼），供 doGet/doPost 驗證與取基本資料用 ----------
+// @return {code, name, owner, contract, startDate, company} 或 null（不存在/已停用）
+function getCaseRow_(ss, caseId) {
+  var sheet = ss.getSheetByName(SHEET_CASES);
+  if (!sheet || !caseId) return null;
+  var rows = sheet.getDataRange().getValues();
+  rows.shift();
+  for (var i = 0; i < rows.length; i++) {
+    if (String(rows[i][0]).trim() === caseId && String(rows[i][2]).trim().toUpperCase() === "TRUE") {
+      return { code: String(rows[i][0]).trim(), name: rows[i][1], owner: rows[i][3], contract: rows[i][4], startDate: rows[i][5], company: rows[i][6] };
+    }
+  }
+  return null;
+}
+
+// ---------- 找列：讀第2列起、寬度 width 欄，回傳符合 predicate 的第一列列號（找不到 -1） ----------
+function findRow_(sheet, width, predicate) {
   var lastRow = sheet.getLastRow();
   if (lastRow < 2) return -1;
-  var vals = sheet.getRange(2, keyCol, lastRow - 1, 1).getValues();
+  var vals = sheet.getRange(2, 1, lastRow - 1, width).getValues();
   for (var i = 0; i < vals.length; i++) {
-    if (normalizeDate(vals[i][0]) === normalizeDate(keyVal)) return i + 2;
+    if (predicate(vals[i])) return i + 2;
   }
   return -1;
 }
 
-// 找「日期+第二欄」都相符的列（日報記錄/本工出勤共用，兩欄複合鍵）
-function findRecordRow(sheet, date, key2) {
-  var lastRow = sheet.getLastRow();
-  if (lastRow < 2) return -1;
-  var vals = sheet.getRange(2, 1, lastRow - 1, 2).getValues();
-  for (var i = 0; i < vals.length; i++) {
-    if (normalizeDate(vals[i][0]) === date && unsanitizeCell(vals[i][1]).trim() === key2) return i + 2;
-  }
-  return -1;
+// 找「日期欄=keyVal 且 案場欄=caseId」的列（日報頭用）
+function findRowByKey(sheet, keyCol, keyVal, caseCol, caseId) {
+  return findRow_(sheet, caseCol, function (r) {
+    return normalizeDate(r[keyCol - 1]) === normalizeDate(keyVal) && String(r[caseCol - 1] || "").trim() === caseId;
+  });
+}
+
+// 找「日期+第二欄+案場」都相符的列（日報記錄/本工出勤共用，三欄複合鍵）
+function findRecordRow(sheet, date, key2, caseCol, caseId) {
+  return findRow_(sheet, caseCol, function (r) {
+    return normalizeDate(r[0]) === date && unsanitizeCell(r[1]).trim() === key2 && String(r[caseCol - 1] || "").trim() === caseId;
+  });
 }
 
 // 寫入儲存格前的公式注入防護：以 = + - @ Tab CR 開頭的字串前面加單引號，讓 Sheets 當純文字。
@@ -256,11 +322,53 @@ function doPost(e) {
     var action = data.action || "submit";
     var pwCheck = verifyPassword(String(data.password || ""));
     if (!pwCheck.ok) return respond(pwCheck);
-    if (action !== "submit" && action !== "addItem") return respond({ ok: false, error: "不支援的操作" });
+    if (action !== "submit" && action !== "addItem" && action !== "addCase") return respond({ ok: false, error: "不支援的操作" });
 
     var ss = SpreadsheetApp.getActiveSpreadsheet();
+    if (firstMissingSheet(ss, [SHEET_CASES])) return respond({ ok: false, error: NOT_SETUP_ERROR });
 
-    // ---- 新增工種/機具/材料項目（給表單上的「＋新增項目」按鈕用） ----
+    // ---- 新增案場（給案場下拉旁「＋新增案場」按鈕用）：不需要既有合法 caseId，這裡就是在建立新的 ----
+    if (action === "addCase") {
+      var newCode = checkText(data.code, "案場代碼", MAX_SHORT_TEXT, true);
+      if (!newCode) return respond({ ok: false, error: "請輸入案場代碼" });
+      if (!/^[A-Za-z0-9_-]+$/.test(newCode)) return respond({ ok: false, error: "案場代碼只能用英數字、底線、連字號" });
+      var newName = checkText(data.name, "案場名稱", MAX_SHORT_TEXT, true);
+      if (!newName) return respond({ ok: false, error: "請輸入案場名稱" });
+      if (/[\\\/:*?"<>|]/.test(newName)) return respond({ ok: false, error: "案場名稱不能包含 \\ / : * ? \" < > | 這些字元（會用在檔名）" });
+
+      var newOwner = checkText(data.owner, "業主", MAX_SHORT_TEXT);
+      var newContract = checkText(data.contract, "合約金額", MAX_SHORT_TEXT);
+      var newStartDate = checkText(data.startDate, "開工日期", MAX_SHORT_TEXT);
+      var newCompany = checkText(data.company, "公司名稱", MAX_SHORT_TEXT);
+
+      var caseSheet = ss.getSheetByName(SHEET_CASES);
+      var caseRows = caseSheet.getDataRange().getValues();
+      for (var ci = 1; ci < caseRows.length; ci++) {
+        if (String(caseRows[ci][0]).trim() === newCode) return respond({ ok: false, error: "案場代碼已存在：" + newCode });
+      }
+      caseSheet.appendRow([newCode, newName, "TRUE", newOwner, newContract, newStartDate, newCompany]);
+
+      // 選填：從既有案場複製目前的工種/機具/材料清單當新案場的起始清單（各案場清單互相獨立，之後各自維護）
+      var copyFrom = String(data.copyFrom || "").trim();
+      var copied = 0;
+      if (copyFrom && !firstMissingSheet(ss, [SHEET_LIST])) {
+        var listSheetC = ss.getSheetByName(SHEET_LIST);
+        var listRowsC = listSheetC.getDataRange().getValues();
+        for (var li = 1; li < listRowsC.length; li++) {
+          if (String(listRowsC[li][CASE_COL_LIST - 1] || "").trim() === copyFrom) {
+            listSheetC.appendRow([listRowsC[li][0], sanitizeCell(unsanitizeCell(listRowsC[li][1]).trim()), listRowsC[li][2], listRowsC[li][3], newCode]);
+            copied++;
+          }
+        }
+      }
+      return respond({ ok: true, code: newCode, copied: copied });
+    }
+
+    var caseId = String(data.caseId || "").trim();
+    var caseInfo = getCaseRow_(ss, caseId);
+    if (!caseInfo) return respond({ ok: false, error: "案場不存在或已停用" });
+
+    // ---- 新增工種/機具/材料項目（給表單上的「＋新增項目」按鈕用）：只在該案場範圍內比對是否已存在 ----
     if (action === "addItem") {
       var category = String(data.category || "").trim();
       var name = checkText(data.name, "項目名稱", MAX_SHORT_TEXT, true);
@@ -273,7 +381,7 @@ function doPost(e) {
       var listSheet = ss.getSheetByName(SHEET_LIST);
       var listRows = listSheet.getDataRange().getValues();
       for (var i = 1; i < listRows.length; i++) {
-        if (unsanitizeCell(listRows[i][1]).trim() === name) {
+        if (unsanitizeCell(listRows[i][1]).trim() === name && String(listRows[i][CASE_COL_LIST - 1] || "").trim() === caseId) {
           if (String(listRows[i][3]).trim().toUpperCase() === "TRUE") {
             return respond({ ok: false, error: "項目已存在" });
           }
@@ -282,7 +390,7 @@ function doPost(e) {
           return respond({ ok: true });
         }
       }
-      listSheet.appendRow([category, sanitizeCell(name), "", "TRUE"]);
+      listSheet.appendRow([category, sanitizeCell(name), "", "TRUE", caseId]);
       return respond({ ok: true });
     }
 
@@ -318,6 +426,7 @@ function doPost(e) {
       sanitizeCell(checkText(h.directorPm, "主任(下午)", MAX_SHORT_TEXT)),
       sanitizeCell(checkText(h.safetyAm, "工安(上午)", MAX_SHORT_TEXT)),
       sanitizeCell(checkText(h.safetyPm, "工安(下午)", MAX_SHORT_TEXT)),
+      caseId,
     ];
 
     var clearNames = [];
@@ -387,43 +496,43 @@ function doPost(e) {
 
     if (firstMissingSheet(ss, [SHEET_HEADER, SHEET_RECORD, SHEET_ATTENDANCE, SHEET_INTERNAL])) return respond({ ok: false, error: NOT_SETUP_ERROR });
 
-    // ---- upsert 日報頭：同一天已有資料就覆蓋，沒有就新增 ----
+    // ---- upsert 日報頭：同一天同一案場已有資料就覆蓋，沒有就新增 ----
     var headerSheet = ss.getSheetByName(SHEET_HEADER);
-    var hRow = findRowByKey(headerSheet, 1, date);
+    var hRow = findRowByKey(headerSheet, 1, date, CASE_COL_HEADER, caseId);
     if (hRow === -1) hRow = headerSheet.getLastRow() + 1;
     ensureRows(headerSheet, hRow);
     headerSheet.getRange(hRow, 1, 1, hVals.length).setValues([hVals]);
 
-    // ---- 日報記錄：先刪除使用者明確清空的項目，再逐一 upsert（同一天同一項目已有資料就覆蓋，沒有就新增） ----
+    // ---- 日報記錄：先刪除使用者明確清空的項目，再逐一 upsert（同一天同一項目同一案場已有資料就覆蓋，沒有就新增） ----
     var recordSheet = ss.getSheetByName(SHEET_RECORD);
     for (var c2 = 0; c2 < clearNames.length; c2++) {
-      var cRow = findRecordRow(recordSheet, date, clearNames[c2]);
+      var cRow = findRecordRow(recordSheet, date, clearNames[c2], CASE_COL_RECORD, caseId);
       if (cRow !== -1) recordSheet.deleteRow(cRow);
     }
     for (var j2 = 0; j2 < cleanItems.length; j2++) {
       var ci = cleanItems[j2];
-      var rRow = findRecordRow(recordSheet, date, ci.name);
-      var rVals = [date, sanitizeCell(ci.name), ci.am, ci.pm, clientId, now];
+      var rRow = findRecordRow(recordSheet, date, ci.name, CASE_COL_RECORD, caseId);
+      var rVals = [date, sanitizeCell(ci.name), ci.am, ci.pm, clientId, now, caseId];
       if (rRow === -1) rRow = recordSheet.getLastRow() + 1;
       ensureRows(recordSheet, rRow);
       recordSheet.getRange(rRow, 1, 1, rVals.length).setValues([rVals]);
     }
 
-    // ---- 本工出勤：先刪除使用者明確移除的人，再逐一 upsert（同一天同一人已有資料就覆蓋，沒有就新增） ----
+    // ---- 本工出勤：先刪除使用者明確移除的人，再逐一 upsert（同一天同一人同一案場已有資料就覆蓋，沒有就新增） ----
     var attSheet = ss.getSheetByName(SHEET_ATTENDANCE);
     for (var r2 = 0; r2 < removeNames.length; r2++) {
-      var rmRow = findRecordRow(attSheet, date, removeNames[r2]);
+      var rmRow = findRecordRow(attSheet, date, removeNames[r2], CASE_COL_ATTENDANCE, caseId);
       if (rmRow !== -1) attSheet.deleteRow(rmRow);
     }
     for (var k2 = 0; k2 < cleanAtt.length; k2++) {
       var ca = cleanAtt[k2];
-      var aRow = findRecordRow(attSheet, date, ca.name);
+      var aRow = findRecordRow(attSheet, date, ca.name, CASE_COL_ATTENDANCE, caseId);
       var aVals = [
         date, sanitizeCell(ca.name),
         ca.am ? "V" : "", ca.pm ? "V" : "",
         ca.amHours, ca.pmHours,
         sanitizeCell(ca.reason),
-        clientId, now,
+        clientId, now, caseId,
       ];
       if (aRow === -1) aRow = attSheet.getLastRow() + 1;
       ensureRows(attSheet, aRow);
@@ -436,14 +545,14 @@ function doPost(e) {
     for (var n2 = 0; n2 < cleanInternal.length; n2++) {
       var ni = cleanInternal[n2];
       internalSheet.appendRow([
-        date, ni.type, sanitizeCell(ni.category), sanitizeCell(ni.content), ni.time, sanitizeCell(ni.remark), clientId, now,
+        date, ni.type, sanitizeCell(ni.category), sanitizeCell(ni.content), ni.time, sanitizeCell(ni.remark), clientId, now, caseId,
       ]);
     }
 
     // ---- 更新雲端 xlsx（xlsx-drive.gs）：已持有 ScriptLock，內部不再取鎖；失敗不影響日報送出 ----
     var xlsx;
     try {
-      var xr = xlsxUpdateForDate(date);
+      var xr = xlsxUpdateForDate(date, caseId, caseInfo);
       xlsx = { ok: true, url: xr.url, warnings: xr.warnings || [] };
     } catch (xerr) {
       xlsx = { ok: false, error: String(xerr) };
@@ -463,16 +572,38 @@ function doGet(e) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
 
   // 尚未執行 setupSheets（缺分頁）時回友善錯誤，不丟例外（前端 res.json() 會壞）
+  // 除了「案場設定」本身，其餘依案場過濾的 action 都同時需要「案場設定」分頁存在
   var neededSheets = {
-    config: [SHEET_LIST, SHEET_BASIC],
-    day: [SHEET_HEADER, SHEET_RECORD, SHEET_ATTENDANCE],
-    cumulative: [SHEET_LIST, SHEET_RECORD],
-    reporters: [SHEET_HEADER],
-    peopleNames: [SHEET_ATTENDANCE],
-    internalCategories: [SHEET_INTERNAL],
+    cases: [SHEET_CASES],
+    config: [SHEET_LIST, SHEET_CASES],
+    day: [SHEET_HEADER, SHEET_RECORD, SHEET_ATTENDANCE, SHEET_CASES],
+    cumulative: [SHEET_LIST, SHEET_RECORD, SHEET_CASES],
+    reporters: [SHEET_HEADER, SHEET_CASES],
+    peopleNames: [SHEET_ATTENDANCE, SHEET_CASES],
+    internalCategories: [SHEET_INTERNAL, SHEET_CASES],
+    xlsxUrl: [SHEET_CASES],
   };
   if (Object.prototype.hasOwnProperty.call(neededSheets, action) && firstMissingSheet(ss, neededSheets[action])) {
     return respond({ ok: false, error: NOT_SETUP_ERROR });
+  }
+
+  // 除了「cases」（列出可選案場，本身不需要指定案場）與尚未列出的 action，其餘一律要求合法的案場
+  var caseId = String(e.parameter.caseId || "").trim();
+  var caseInfo = null;
+  var CASE_REQUIRED = ["config", "day", "cumulative", "reporters", "peopleNames", "internalCategories", "xlsxUrl"];
+  if (CASE_REQUIRED.indexOf(action) !== -1) {
+    caseInfo = getCaseRow_(ss, caseId);
+    if (!caseInfo) return respond({ ok: false, error: "案場不存在或已停用" });
+  }
+
+  if (action === "cases") {
+    var caseSheet = ss.getSheetByName(SHEET_CASES);
+    var caseRows = caseSheet.getDataRange().getValues();
+    caseRows.shift();
+    var cases = caseRows
+      .filter(function (r) { return String(r[2]).trim().toUpperCase() === "TRUE"; })
+      .map(function (r) { return { code: String(r[0]).trim(), name: r[1] }; });
+    return respond({ ok: true, cases: cases });
   }
 
   if (action === "config") {
@@ -480,18 +611,22 @@ function doGet(e) {
     var rows = list.getDataRange().getValues();
     rows.shift(); // 表頭
     var items = rows
-      .filter(function (r) { return String(r[3]).trim().toUpperCase() === "TRUE"; })
+      .filter(function (r) { return String(r[3]).trim().toUpperCase() === "TRUE" && String(r[CASE_COL_LIST - 1] || "").trim() === caseId; })
       .map(function (r) { return { category: r[0], name: unsanitizeCell(r[1]), workCode: r[2] }; });
-    var basic = ss.getSheetByName(SHEET_BASIC).getRange(1, 1, 5, 2).getValues();
-    var basicObj = {};
-    basic.forEach(function (r) { basicObj[r[0]] = r[1]; });
+    var basicObj = {
+      "業主": caseInfo.owner || "",
+      "工程名稱": caseInfo.name || "",
+      "合約金額（元）": caseInfo.contract || "",
+      "開工日期（YYYY/MM/DD）": caseInfo.startDate || "",
+      "公司名稱": caseInfo.company || "",
+    };
     return respond({ ok: true, items: items, basic: basicObj });
   }
 
   if (action === "day") {
     var date = String(e.parameter.date || "").trim();
     var headerSheet = ss.getSheetByName(SHEET_HEADER);
-    var hRow = findRowByKey(headerSheet, 1, date);
+    var hRow = findRowByKey(headerSheet, 1, date, CASE_COL_HEADER, caseId);
     var header = null;
     if (hRow !== -1) {
       var hv = headerSheet.getRange(hRow, 1, 1, 13).getValues()[0];
@@ -505,16 +640,16 @@ function doGet(e) {
     var lastRow = recordSheet.getLastRow();
     var records = [];
     if (lastRow >= 2) {
-      var rv = recordSheet.getRange(2, 1, lastRow - 1, 4).getValues();
-      records = rv.filter(function (r) { return normalizeDate(r[0]) === date; })
+      var rv = recordSheet.getRange(2, 1, lastRow - 1, CASE_COL_RECORD).getValues();
+      records = rv.filter(function (r) { return normalizeDate(r[0]) === date && String(r[CASE_COL_RECORD - 1] || "").trim() === caseId; })
         .map(function (r) { return { name: unsanitizeCell(r[1]), am: r[2], pm: r[3] }; });
     }
     var attSheet = ss.getSheetByName(SHEET_ATTENDANCE);
     var attLastRow = attSheet.getLastRow();
     var attendance = [];
     if (attLastRow >= 2) {
-      var av = attSheet.getRange(2, 1, attLastRow - 1, 7).getValues();
-      attendance = av.filter(function (r) { return normalizeDate(r[0]) === date; })
+      var av = attSheet.getRange(2, 1, attLastRow - 1, CASE_COL_ATTENDANCE).getValues();
+      attendance = av.filter(function (r) { return normalizeDate(r[0]) === date && String(r[CASE_COL_ATTENDANCE - 1] || "").trim() === caseId; })
         .map(function (r) { return { name: unsanitizeCell(r[1]), am: r[2] === "V", pm: r[3] === "V", amHours: r[4], pmHours: r[5], reason: unsanitizeCell(r[6]) }; });
     }
     return respond({ ok: true, header: header, records: records, attendance: attendance });
@@ -524,20 +659,23 @@ function doGet(e) {
     var upTo = String(e.parameter.upTo || "").trim();
 
     // 材料是直接加總用量，工種/機具是「工天數」邏輯(上午+下午)/2 —— 兩種算法不同，
-    // 要先查清單分頁知道每個項目屬於哪一類，才能套對公式。
+    // 要先查清單分頁知道每個項目屬於哪一類，才能套對公式。清單本身依案場過濾（工種/機具/材料清單各案場獨立）。
     var listSheet = ss.getSheetByName(SHEET_LIST);
     var listRows = listSheet.getDataRange().getValues();
     listRows.shift();
     var categoryByName = Object.create(null); // 項目名稱當 key：用無原型物件，避免 constructor/__proto__ 等名稱汙染
-    listRows.forEach(function (r) { categoryByName[unsanitizeCell(r[1])] = r[0]; });
+    listRows.forEach(function (r) {
+      if (String(r[CASE_COL_LIST - 1] || "").trim() === caseId) categoryByName[unsanitizeCell(r[1])] = r[0];
+    });
 
     var recordSheet2 = ss.getSheetByName(SHEET_RECORD);
     var lastRow2 = recordSheet2.getLastRow();
     var totals = Object.create(null);
     var cumWarnings = [], skippedNames = Object.create(null);
     if (lastRow2 >= 2) {
-      var rv2 = recordSheet2.getRange(2, 1, lastRow2 - 1, 4).getValues();
+      var rv2 = recordSheet2.getRange(2, 1, lastRow2 - 1, CASE_COL_RECORD).getValues();
       rv2.forEach(function (r) {
+        if (String(r[CASE_COL_RECORD - 1] || "").trim() !== caseId) return;
         var d = normalizeDate(r[0]);
         if (upTo && d > upTo) return;
         var name = unsanitizeCell(r[1]);
@@ -559,8 +697,9 @@ function doGet(e) {
     var names = [];
     if (lastRow3 >= 2) {
       var seen = Object.create(null);
-      headerSheet3.getRange(2, 7, lastRow3 - 1, 1).getValues().forEach(function (r) {
-        var n = unsanitizeCell(r[0]).trim();
+      headerSheet3.getRange(2, 1, lastRow3 - 1, CASE_COL_HEADER).getValues().forEach(function (r) {
+        if (String(r[CASE_COL_HEADER - 1] || "").trim() !== caseId) return;
+        var n = unsanitizeCell(r[6]).trim();
         if (n && !seen[n]) { seen[n] = true; names.push(n); }
       });
     }
@@ -573,15 +712,16 @@ function doGet(e) {
     var pNames = [];
     if (attLastRow3 >= 2) {
       var seen2 = Object.create(null);
-      attSheet3.getRange(2, 2, attLastRow3 - 1, 1).getValues().forEach(function (r) {
-        var n = unsanitizeCell(r[0]).trim();
+      attSheet3.getRange(2, 1, attLastRow3 - 1, CASE_COL_ATTENDANCE).getValues().forEach(function (r) {
+        if (String(r[CASE_COL_ATTENDANCE - 1] || "").trim() !== caseId) return;
+        var n = unsanitizeCell(r[1]).trim();
         if (n && !seen2[n]) { seen2[n] = true; pNames.push(n); }
       });
     }
     return respond({ ok: true, names: pNames });
   }
 
-  // 選工記錄「類別」輸入框的建議清單：固定 4 個預設值 + 後台曾經用過的自訂值（依出現順序，不重複）
+  // 選工記錄「類別」輸入框的建議清單：固定 4 個預設值 + 該案場後台曾經用過的自訂值（依出現順序，不重複）
   if (action === "internalCategories") {
     var categories = ["工種", "機具", "材料", "其他"];
     var seenCat = Object.create(null);
@@ -589,18 +729,19 @@ function doGet(e) {
     var internalSheet3 = ss.getSheetByName(SHEET_INTERNAL);
     var internalLastRow3 = internalSheet3.getLastRow();
     if (internalLastRow3 >= 2) {
-      internalSheet3.getRange(2, 3, internalLastRow3 - 1, 1).getValues().forEach(function (r) {
-        var c = unsanitizeCell(r[0]).trim();
+      internalSheet3.getRange(2, 1, internalLastRow3 - 1, CASE_COL_INTERNAL).getValues().forEach(function (r) {
+        if (String(r[CASE_COL_INTERNAL - 1] || "").trim() !== caseId) return;
+        var c = unsanitizeCell(r[2]).trim();
         if (c && !seenCat[c]) { seenCat[c] = true; categories.push(c); }
       });
     }
     return respond({ ok: true, names: categories });
   }
 
-  // 目前 xlsx 輸出檔（施工日報彙整.xlsx）的網址；檔案還沒產生（尚未送出過日報）時 url 為空字串
+  // 目前該案場 xlsx 輸出檔的網址；檔案還沒產生（尚未送出過日報）時 url 為空字串
   if (action === "xlsxUrl") {
     try {
-      var xlsxFile = xlsxFindOutput_();
+      var xlsxFile = xlsxFindOutput_(caseId, caseInfo);
       return respond({ ok: true, url: xlsxFile ? xlsxFile.getUrl() : "" });
     } catch (err) {
       return respond({ ok: false, error: String(err) });
@@ -632,35 +773,35 @@ function parseAdminDate(input) {
   return y + "-" + ("0" + mo).slice(-2) + "-" + ("0" + d).slice(-2);
 }
 
-// 該分頁中日期欄（A 欄）等於 date 的所有列號（由小到大）
-function adminDayRows_(sheet, date) {
+// 該分頁中「日期欄（A欄）等於 date 且 案場欄等於 caseId」的所有列號（由小到大）
+function adminDayRows_(sheet, date, caseCol, caseId) {
   var lastRow = sheet.getLastRow();
   if (lastRow < 2) return [];
-  var vals = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+  var vals = sheet.getRange(2, 1, lastRow - 1, caseCol).getValues();
   var rows = [];
   for (var i = 0; i < vals.length; i++) {
-    if (normalizeDate(vals[i][0]) === date) rows.push(i + 2);
+    if (normalizeDate(vals[i][0]) === date && String(vals[i][caseCol - 1] || "").trim() === caseId) rows.push(i + 2);
   }
   return rows;
 }
 
-// 統計某天現有多少資料（不修改任何東西）：{header, record, attendance, xlsx(該日在 xlsx 有沒有分頁)}
-function adminCountDay(date) {
+// 統計某案場某天現有多少資料（不修改任何東西）：{header, record, attendance, xlsx(該日在該案場 xlsx 有沒有分頁)}
+function adminCountDay(date, caseId, caseInfo) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var xlsx = false;
-  try { xlsx = xlsxHasSheetForDate(date); } catch (err) { xlsx = false; }
+  try { xlsx = xlsxHasSheetForDate(date, caseId, caseInfo); } catch (err) { xlsx = false; }
   return {
-    header: adminDayRows_(ss.getSheetByName(SHEET_HEADER), date).length,
-    record: adminDayRows_(ss.getSheetByName(SHEET_RECORD), date).length,
-    attendance: adminDayRows_(ss.getSheetByName(SHEET_ATTENDANCE), date).length,
+    header: adminDayRows_(ss.getSheetByName(SHEET_HEADER), date, CASE_COL_HEADER, caseId).length,
+    record: adminDayRows_(ss.getSheetByName(SHEET_RECORD), date, CASE_COL_RECORD, caseId).length,
+    attendance: adminDayRows_(ss.getSheetByName(SHEET_ATTENDANCE), date, CASE_COL_ATTENDANCE, caseId).length,
     xlsx: xlsx,
   };
 }
 
-// 刪除某天在三張資料表的所有列，並同步 xlsx（移除該日分頁、重算之後日期的累計）。
+// 刪除某案場某天在三張資料表的所有列，並同步該案場的 xlsx（移除該日分頁、重算之後日期的累計）。
 // 與日報送出共用同一把鎖，避免有人正好在送出時互相干擾。
 // @return {ok, deleted:{header,record,attendance}, xlsx:{ok, skipped?, removedFile?, sheets?, error?}} 或 {ok:false, error}
-function adminDeleteDayCore(date) {
+function adminDeleteDayCore(date, caseId, caseInfo) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date))) return { ok: false, error: "日期格式錯誤" };
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   if (firstMissingSheet(ss, [SHEET_HEADER, SHEET_RECORD, SHEET_ATTENDANCE])) return { ok: false, error: NOT_SETUP_ERROR };
@@ -673,23 +814,23 @@ function adminDeleteDayCore(date) {
   }
   try {
     var deleted = {};
-    [[SHEET_HEADER, "header"], [SHEET_RECORD, "record"], [SHEET_ATTENDANCE, "attendance"]].forEach(function (p) {
+    [[SHEET_HEADER, "header", CASE_COL_HEADER], [SHEET_RECORD, "record", CASE_COL_RECORD], [SHEET_ATTENDANCE, "attendance", CASE_COL_ATTENDANCE]].forEach(function (p) {
       var sheet = ss.getSheetByName(p[0]);
-      var rows = adminDayRows_(sheet, date);
+      var rows = adminDayRows_(sheet, date, p[2], caseId);
       for (var i = rows.length - 1; i >= 0; i--) sheet.deleteRow(rows[i]); // 由下往上刪，列號才不會位移
       deleted[p[1]] = rows.length;
     });
 
     var xlsx;
     try {
-      if (!xlsxFindOutput_()) {
+      if (!xlsxFindOutput_(caseId, caseInfo)) {
         xlsx = { ok: true, skipped: true }; // xlsx 還沒建立過，不需處理
       } else {
-        var xr = xlsxUpdateForDate(date);
+        var xr = xlsxUpdateForDate(date, caseId, caseInfo);
         xlsx = { ok: true, removedFile: !!xr.removed, sheets: xr.sheets };
       }
     } catch (xerr) {
-      xlsx = { ok: false, error: String(xerr) }; // 資料已刪除；xlsx 失敗時可再執行 xlsxRebuildAll() 補救
+      xlsx = { ok: false, error: String(xerr) }; // 資料已刪除；xlsx 失敗時可再執行 xlsxRebuildAll(caseId) 補救
     }
     return { ok: true, deleted: deleted, xlsx: xlsx };
   } finally {
@@ -697,14 +838,41 @@ function adminDeleteDayCore(date) {
   }
 }
 
-// 選單「刪除某天日報資料…」的畫面流程：輸入日期 → 顯示將刪除的筆數並二次確認 → 執行 → 顯示結果
+// 選單「刪除某天日報資料…」的畫面流程：先選案場 → 輸入日期 → 顯示將刪除的筆數並二次確認 → 執行 → 顯示結果
 function adminDeleteDay() {
   var ui = SpreadsheetApp.getUi();
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (firstMissingSheet(ss, [SHEET_CASES])) {
+    ui.alert("無法刪除", NOT_SETUP_ERROR, ui.ButtonSet.OK);
+    return;
+  }
+  var caseSheet = ss.getSheetByName(SHEET_CASES);
+  var caseRows = caseSheet.getDataRange().getValues();
+  caseRows.shift();
+  var activeCases = caseRows.filter(function (r) { return String(r[2]).trim().toUpperCase() === "TRUE"; });
+  if (!activeCases.length) {
+    ui.alert("無法刪除", "「案場設定」目前沒有啟用中的案場。", ui.ButtonSet.OK);
+    return;
+  }
+  var caseList = activeCases.map(function (r) { return String(r[0]).trim() + "（" + r[1] + "）"; }).join("\n");
+  var caseResp = ui.prompt(
+    "刪除某天日報資料 - 第1步：選案場",
+    "請輸入案場代碼：\n\n" + caseList,
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (caseResp.getSelectedButton() !== ui.Button.OK) return;
+  var caseId = caseResp.getResponseText().trim();
+  var caseInfo = getCaseRow_(ss, caseId);
+  if (!caseInfo) {
+    ui.alert("案場代碼不正確", "請輸入清單中列出的案場代碼。", ui.ButtonSet.OK);
+    return;
+  }
+
   var resp = ui.prompt(
-    "刪除某天日報資料",
+    "刪除某天日報資料 - 第2步：選日期（案場：" + caseInfo.name + "）",
     "請輸入要刪除的日期（例如 2026-09-21 或民國 115.9.21）。\n\n" +
-    "會刪除該天在「日報頭」「日報記錄」「本工出勤」的資料，並從 xlsx 移除該天的分頁。\n" +
-    "（「內部記錄」分頁不受影響，如需修改請直接到後台編輯）",
+    "會刪除該天在「日報頭」「日報記錄」「本工出勤」的資料，並從該案場的 xlsx 移除該天的分頁。\n" +
+    "（「內部記錄」分頁不受影響）",
     ui.ButtonSet.OK_CANCEL
   );
   if (resp.getSelectedButton() !== ui.Button.OK) return;
@@ -714,19 +882,18 @@ function adminDeleteDay() {
     ui.alert("日期格式不正確", "請輸入像 2026-09-21 或 115.9.21 的日期。", ui.ButtonSet.OK);
     return;
   }
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
   if (firstMissingSheet(ss, [SHEET_HEADER, SHEET_RECORD, SHEET_ATTENDANCE])) {
     ui.alert("無法刪除", NOT_SETUP_ERROR, ui.ButtonSet.OK);
     return;
   }
 
-  var n = adminCountDay(date);
+  var n = adminCountDay(date, caseId, caseInfo);
   if (!n.header && !n.record && !n.attendance && !n.xlsx) {
-    ui.alert("找不到資料", date + " 在三張資料表和 xlsx 都沒有資料，沒有刪除任何東西。", ui.ButtonSet.OK);
+    ui.alert("找不到資料", date + "（" + caseInfo.name + "）在三張資料表和 xlsx 都沒有資料，沒有刪除任何東西。", ui.ButtonSet.OK);
     return;
   }
   var sheetName = XlsxBuilder.sheetNameForDate(date);
-  var confirmText = "即將刪除 " + date + " 的資料：\n\n" +
+  var confirmText = "即將刪除【" + caseInfo.name + "】" + date + " 的資料：\n\n" +
     "・日報頭　　 " + n.header + " 列\n" +
     "・日報記錄　 " + n.record + " 列\n" +
     "・本工出勤　 " + n.attendance + " 列\n" +
@@ -735,13 +902,13 @@ function adminDeleteDay() {
     "刪除後無法在網頁上復原（可用 Google 試算表的「檔案 → 版本記錄」還原）。\n確定要刪除嗎？";
   if (ui.alert("確認刪除 " + date, confirmText, ui.ButtonSet.YES_NO) !== ui.Button.YES) return;
 
-  var r = adminDeleteDayCore(date);
+  var r = adminDeleteDayCore(date, caseId, caseInfo);
   if (!r.ok) {
     ui.alert("刪除失敗", r.error, ui.ButtonSet.OK);
     return;
   }
-  var msg = "已刪除 " + date + "：日報頭 " + r.deleted.header + " 列、日報記錄 " + r.deleted.record + " 列、本工出勤 " + r.deleted.attendance + " 列。\n\n";
-  if (!r.xlsx.ok) msg += "⚠ xlsx 更新失敗：" + r.xlsx.error + "\n資料已刪除，請到 Apps Script 執行 xlsxRebuildAll() 補救。";
+  var msg = "已刪除【" + caseInfo.name + "】" + date + "：日報頭 " + r.deleted.header + " 列、日報記錄 " + r.deleted.record + " 列、本工出勤 " + r.deleted.attendance + " 列。\n\n";
+  if (!r.xlsx.ok) msg += "⚠ xlsx 更新失敗：" + r.xlsx.error + "\n資料已刪除，請到 Apps Script 執行 xlsxRebuildAll(\"" + caseId + "\") 補救。";
   else if (r.xlsx.skipped) msg += "xlsx 尚未建立，不需處理。";
   else if (r.xlsx.removedFile) msg += "xlsx 已沒有任何分頁，已把檔案移到 Drive 垃圾桶（下次送出日報時會自動重新建立）。";
   else msg += "xlsx 已更新（移除該日分頁，並重算之後日期的累計）。";

@@ -10,6 +10,10 @@
   let loadedItemNames = []; // 載入時「有數字」的項目名稱，用來算出使用者清空了哪些
   let loadedAttendanceNames = []; // 載入時已存在的出勤人員，用來算出使用者移除了誰
 
+  let CASES = []; // {code, name}
+  let currentCaseId = ""; // 目前選擇的案場代碼；apiGet/apiPost 會自動帶上
+  let caseLoaded = false; // 案場的設定/清單成功載入後才允許送出
+
   function toDateInputValue(d) {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   }
@@ -33,6 +37,7 @@
   async function apiGet(action, params) {
     const url = new URL(cfg.SCRIPT_URL);
     url.searchParams.set("action", action);
+    if (currentCaseId) url.searchParams.set("caseId", currentCaseId);
     Object.entries(params || {}).forEach(([k, v]) => url.searchParams.set(k, v));
     const res = await fetch(url.toString());
     return res.json();
@@ -40,10 +45,110 @@
   async function apiPost(payload) {
     const res = await fetch(cfg.SCRIPT_URL, {
       method: "POST",
-      body: JSON.stringify(payload),
+      body: JSON.stringify(Object.assign({ caseId: currentCaseId }, payload)),
       headers: { "Content-Type": "text/plain;charset=utf-8" },
     });
     return res.json();
+  }
+
+  // ---------- 案場：下拉選單載入/切換，之後所有 apiGet/apiPost 都會自動帶上 currentCaseId ----------
+  async function loadCases() {
+    const result = await apiGet("cases");
+    if (!result.ok) throw new Error(result.error || "讀取案場清單失敗");
+    CASES = result.cases || [];
+    const select = el("fCase");
+    select.innerHTML = "";
+    CASES.forEach((c) => {
+      const opt = document.createElement("option");
+      opt.value = c.code;
+      opt.textContent = c.name ? `${c.name}（${c.code}）` : c.code;
+      select.appendChild(opt);
+    });
+    let stored = "";
+    try { stored = localStorage.getItem("dailyReport.caseId") || ""; } catch (err) { /* 私密瀏覽等情境略過 */ }
+    const initial = CASES.some((c) => c.code === stored) ? stored : (CASES[0] && CASES[0].code) || "";
+    select.value = initial;
+    currentCaseId = initial;
+  }
+
+  // 載入目前案場的設定/清單/當天資料；初次載入與切換案場都呼叫這個
+  async function loadCaseData() {
+    caseLoaded = false;
+    syncSubmitLock();
+    const status = el("caseLoadStatus");
+    xlsxUrl = ""; // 換案場後舊的 xlsx 網址不適用，等下面重新查詢
+    if (!currentCaseId) {
+      status.textContent = "沒有可用的案場，請先在「案場設定」分頁新增並啟用一個案場";
+      return;
+    }
+    status.textContent = "讀取案場資料中…";
+    try {
+      await loadConfig();
+      await loadReporters().catch(() => {}); // 下拉選單載入失敗不影響當天資料
+      caseLoaded = true;
+      status.textContent = "";
+      await loadDay(el("fDate").value);
+      fetchXlsxUrl().then((r) => { if (r.url) xlsxUrl = r.url; });
+    } catch (err) {
+      status.textContent = "讀取案場資料失敗：" + err.message;
+    }
+    syncSubmitLock();
+  }
+
+  // ---------- 新增案場：案場下拉旁「＋新增案場」按鈕 ----------
+  function fillCopyFromOptions() {
+    const sel = el("ncCopyFrom");
+    sel.innerHTML = "";
+    const noneOpt = document.createElement("option");
+    noneOpt.value = "";
+    noneOpt.textContent = "不複製（從空清單開始）";
+    sel.appendChild(noneOpt);
+    CASES.forEach((c) => {
+      const opt = document.createElement("option");
+      opt.value = c.code;
+      opt.textContent = `沿用「${c.name}」的清單`;
+      sel.appendChild(opt);
+    });
+    if (currentCaseId) sel.value = currentCaseId; // 預設複製目前選的案場，最常見情境
+  }
+
+  function setNcStatus(text, kind) {
+    const box = el("ncStatus");
+    box.hidden = false;
+    box.textContent = text;
+    box.className = "form-status" + (kind ? " " + kind : "");
+  }
+
+  async function submitAddCase() {
+    const code = el("ncCode").value.trim();
+    const name = el("ncName").value.trim();
+    if (!code || !name) { setNcStatus("案場代碼與案場名稱為必填", "error"); return; }
+    const password = el("fPassword").value;
+    if (!password.trim()) { setNcStatus("請先到頁面下方「備註」卡片輸入通關密碼", "error"); return; }
+    const btn = el("ncSubmitBtn");
+    btn.disabled = true;
+    setNcStatus("建立中…", "");
+    try {
+      const result = await apiPost({
+        action: "addCase", password, code, name,
+        owner: el("ncOwner").value.trim(), contract: el("ncContract").value.trim(),
+        startDate: el("ncStartDate").value.trim(), company: el("ncCompany").value.trim(),
+        copyFrom: el("ncCopyFrom").value,
+      });
+      if (!result.ok) throw new Error(result.error || "建立失敗");
+      setNcStatus(`已建立「${name}」`, "success");
+      await loadCases();
+      el("fCase").value = code; // 覆蓋 loadCases() 依 localStorage/預設選的案場，直接切到新建立的這個
+      currentCaseId = code;
+      try { localStorage.setItem("dailyReport.caseId", code); } catch (err) { /* 私密瀏覽等情境略過 */ }
+      el("addCaseSection").hidden = true;
+      ["ncCode", "ncName", "ncOwner", "ncCompany", "ncContract", "ncStartDate"].forEach((id) => { el(id).value = ""; });
+      await loadCaseData();
+    } catch (err) {
+      setNcStatus("建立失敗：" + err.message, "error");
+    } finally {
+      btn.disabled = false;
+    }
   }
 
   // ---------- 本工人員出勤：動態新增/刪除列 ----------
@@ -443,8 +548,10 @@
 
   function syncSubmitLock() {
     const noPassword = el("fPassword").value.trim() === "";
-    el("submitBtn").disabled = noPassword || !dayLoaded;
-    el("passwordHint").textContent = !dayLoaded
+    el("submitBtn").disabled = noPassword || !dayLoaded || !caseLoaded;
+    el("passwordHint").textContent = !caseLoaded
+      ? "案場資料讀取完成後才能送出"
+      : !dayLoaded
       ? "當天資料讀取完成後才能送出"
       : noPassword ? "請先輸入密碼才能送出" : "";
   }
@@ -575,7 +682,21 @@
     });
     el("addAttendanceBtn").addEventListener("click", () => addAttendanceRow());
     el("openXlsxBtn").addEventListener("click", openXlsx);
-    fetchXlsxUrl().then((r) => { if (r.url) xlsxUrl = r.url; }); // 先取好網址，點擊時可直接開啟
+    el("fCase").addEventListener("change", () => {
+      currentCaseId = el("fCase").value;
+      try { localStorage.setItem("dailyReport.caseId", currentCaseId); } catch (err) { /* 私密瀏覽等情境略過 */ }
+      loadCaseData();
+    });
+    el("addCaseBtn").addEventListener("click", () => {
+      const sec = el("addCaseSection");
+      sec.hidden = !sec.hidden;
+      if (!sec.hidden) {
+        fillCopyFromOptions();
+        sec.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    });
+    el("ncCancelBtn").addEventListener("click", () => { el("addCaseSection").hidden = true; });
+    el("ncSubmitBtn").addEventListener("click", submitAddCase);
     el("printReportBtn").addEventListener("click", () => {
       buildPrintReport();
       document.body.classList.add("printing-report");
@@ -636,9 +757,8 @@
     });
 
     try {
-      await loadConfig();
-      await loadReporters().catch(() => {}); // 下拉選單載入失敗不影響當天資料
-      await loadDay(today);
+      await loadCases();
+      await loadCaseData();
     } catch (err) {
       el("errorBanner").hidden = false;
       el("errorBanner").textContent = "讀取失敗：" + err.message;
