@@ -115,15 +115,25 @@ function setupSheets() {
   // 給不同使用者看的操作說明：寫在資料欄右側的 J 欄（每次 setupSheets 都會重寫成最新版，請勿在此輸入資料）
   writeSheetGuide_(cases, GUIDE_COL, CASES_GUIDE);
   writeSheetGuide_(billing, GUIDE_COL, BILLING_GUIDE);
+
+  // 顏色標示哪些分頁/格子可以人工輸入（見 COLOR_LEGEND）
+  applyColorGuide_(ss);
 }
 
 var GUIDE_COL = 10; // J 欄：兩張設定分頁的資料欄都在 A~H 以內
 var UPDATE_STEPS = [
-  "【如何把修改套用到 Drive 的 xlsx 日報】",
-  "1. 修改完成後，點上方選單「日報管理」→「更新全部日報（套用案場設定）」。",
+  "【如何把人工輸入/修改套用到 Drive 的 xlsx 日報】",
+  "1. 在「綠色」可輸入的格子填好或改好資料後，點上方選單「日報管理」→「更新全部日報（套用案場設定）」。",
   "2. 跳出確認視窗，按「是」。第一次使用 Google 會要求授權：選你的帳號→「進階」→「前往（不安全）」→「允許」，再重按一次選單。",
   "3. 等候約 1~2 分鐘（日報天數越多越久），出現「更新完成」視窗即可。每個案場各顯示一行結果，有「失敗」請截圖給系統管理員。",
   "4. 更新只會重寫 xlsx 的抬頭與請款表，不會改動日報內容與累計。Drive 上的 xlsx 只當輸出檔，請勿手動改格子（下次更新會被覆蓋）。",
+];
+var COLOR_LEGEND = [
+  "【顏色說明：哪些可以人工輸入】",
+  "🟩 綠色（分頁標籤＋表頭＋淡綠格子）＝可人工輸入/修改：「案場設定」「請款資料」，以及「工種機具材料清單」的「工項編號」「啟用中」兩欄。改完要照下面步驟按「更新」，Drive 的 xlsx 才會同步。",
+  "🟦 藍色＝「內部記錄」：可人工修改，不進列印也不進 xlsx，不需要按更新。",
+  "⬜ 灰色（分頁標籤＋表頭）＝由日報網頁寫入：「日報頭」「日報記錄」「本工出勤」，以及清單的「類別」「項目名稱」「案場」欄。請勿手動輸入；要修正請回日報網頁選該日期修改，或用選單「日報管理→刪除某天日報資料」。",
+  "（每個分頁左上角 A1 的備註也有同樣說明，滑鼠移上去就會顯示。）",
 ];
 var CASES_GUIDE = [
   "📌 使用說明（程式維護，請勿在此欄輸入資料）",
@@ -133,7 +143,7 @@ var CASES_GUIDE = [
   "・「案場代碼」建立後請勿更改（舊資料靠它對應案場）；不用的案場把「啟用中」改成 FALSE，不要刪列。",
   "・新增案場：在最下方空白列填一列，或在日報網頁按「＋新增案場」。",
   "",
-].concat(UPDATE_STEPS);
+].concat(COLOR_LEGEND, [""], UPDATE_STEPS);
 var BILLING_GUIDE = [
   "📌 使用說明（程式維護，請勿在此欄輸入資料）",
   "這張表是 xlsx 日報「請款表」的資料來源：一列一期請款。",
@@ -144,7 +154,55 @@ var BILLING_GUIDE = [
   "・日報請款表最多顯示 5 列（最新的 5 列，超過會在更新結果警告）。超過時請自行把舊的幾期合併成一列累加金額，並刪除被合併的列。",
   "・網頁「列印日報」不印請款表；請款表只出現在 Drive 的 xlsx 日報。請勿更動第 1 列表頭與欄位順序。",
   "",
-].concat(UPDATE_STEPS);
+].concat(COLOR_LEGEND, [""], UPDATE_STEPS);
+
+// 顏色標示：綠＝可人工輸入（改完按更新）、藍＝可人工修改但不進 xlsx、灰＝網頁寫入請勿手改。
+// 只動格式（分頁標籤色、表頭底色、可輸入區底色、A1 備註），不動資料；每次 setupSheets 都會重套。
+var GUIDE_COLORS = {
+  inputHeader: "#a5d6a7", inputBody: "#e8f5e9", sysHeader: "#d9d9d9", memoHeader: "#bbdefb",
+  tabInput: "#43a047", tabSys: "#9e9e9e", tabMemo: "#1e88e5",
+};
+function colorHeader_(sheet, firstCol, lastCol, bg) {
+  var r = sheet.getRange(1, firstCol, 1, lastCol - firstCol + 1);
+  r.setBackground(bg);
+  r.setFontWeight("bold");
+}
+function applyColorGuide_(ss) {
+  var C = GUIDE_COLORS;
+  function put(name, fn) { var sh = ss.getSheetByName(name); if (sh) fn(sh); }
+  put(SHEET_CASES, function (sh) {
+    sh.setTabColor(C.tabInput);
+    colorHeader_(sh, 1, 7, C.inputHeader);
+    sh.getRange(2, 1, 499, 7).setBackground(C.inputBody);
+    sh.getRange("A1").setNote("🟩 綠色＝可人工輸入。改完請按選單「日報管理→更新全部日報」，Drive 的 xlsx 才會同步（說明見 J 欄）。");
+  });
+  put(SHEET_BILLING, function (sh) {
+    sh.setTabColor(C.tabInput);
+    colorHeader_(sh, 1, 8, C.inputHeader);
+    sh.getRange(2, 1, 499, 8).setBackground(C.inputBody);
+    sh.getRange("A1").setNote("🟩 綠色＝可人工輸入。輸入後請按選單「日報管理→更新全部日報」，Drive 的 xlsx 才會顯示（說明見 J 欄）。");
+  });
+  put(SHEET_LIST, function (sh) {
+    sh.setTabColor(C.tabInput);
+    colorHeader_(sh, 1, 2, C.sysHeader);
+    colorHeader_(sh, 3, 4, C.inputHeader);
+    colorHeader_(sh, 5, 5, C.sysHeader);
+    sh.getRange(2, 3, 499, 2).setBackground(C.inputBody);
+    sh.getRange("A1").setNote("🟩 只有「工項編號」「啟用中」兩欄可人工輸入（綠色），改完請按選單「日報管理→更新全部日報」。⬜ 灰色欄（類別/項目名稱/案場）請勿手改，改項目名稱會讓歷史累計對不上。");
+  });
+  put(SHEET_INTERNAL, function (sh) {
+    sh.setTabColor(C.tabMemo);
+    colorHeader_(sh, 1, 9, C.memoHeader);
+    sh.getRange("A1").setNote("🟦 可人工修改，不進列印也不進 xlsx，不需要按更新。");
+  });
+  [SHEET_HEADER, SHEET_RECORD, SHEET_ATTENDANCE].forEach(function (name) {
+    put(name, function (sh) {
+      sh.setTabColor(C.tabSys);
+      colorHeader_(sh, 1, Math.max(sh.getLastColumn(), 1), C.sysHeader);
+      sh.getRange("A1").setNote("⬜ 由日報網頁寫入，請勿手動輸入。要修正請回日報網頁選該日期修改，或用選單「日報管理→刪除某天日報資料」。");
+    });
+  });
+}
 
 // 在指定欄由上而下寫入說明文字（自動換行、淡黃底、第一列粗體），欄寬放寬以便閱讀
 function writeSheetGuide_(sheet, col, lines) {

@@ -192,8 +192,8 @@
       "amount": { "cell": "E{r}", "mergedTo": "G{r}", "label": "本期請款金額", "type": "number", "unitCell": "H{r}", "unit": "元" },
       "prevCumulative": { "cell": "I{r}", "mergedTo": "L{r}", "label": "累計至上期請款金額", "type": "number", "unitCell": "M{r}", "unit": "元", "rule": "自動算：同區域、排在此列之前的各列本期請款金額加總（不存進試算表）" },
       "progress": { "cell": "N{r}", "mergedTo": "O{r}", "label": "目前進度", "type": "number", "format": "0.00%", "rule": "存比例：35→0.35、\"35%\"→0.35、0.35→0.35、1→100%；不再另寫 P 欄「%」(避免與百分比格式重複)；空白則不寫" },
-      "remark": { "cell": "Q{r}", "mergedTo": "R{r}", "label": "備註", "type": "string" },
-      "invoice": { "cell": "S{r}", "label": "發票", "type": "string" }
+      "remark": { "cell": "P{r}", "mergedTo": "Q{r}", "label": "備註", "type": "string" },
+      "invoice": { "cell": "R{r}", "mergedTo": "S{r}", "label": "發票", "type": "string", "note": "2026-10-07 改為 R:S 合併（11.75 字寬），讓發票號碼完整顯示；P 欄原單位欄已不用" }
     },
     "total": {
       "label": { "cell": "A52", "mergedTo": "D52", "text": "總合計：" },

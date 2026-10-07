@@ -316,6 +316,19 @@
     box.className = "form-status" + (kind ? " " + kind : "");
   }
 
+  // 新增成功後卡片會自動收合，結果訊息放在標題列下方（billingDone），收合後仍看得到
+  function setBillingDone(text, kind) {
+    const box = el("billingDone");
+    box.hidden = !text;
+    box.textContent = text;
+    box.className = "form-status" + (kind ? " " + kind : "");
+  }
+
+  function collapseBilling() {
+    el("billingBody").hidden = true;
+    el("billingToggle").setAttribute("aria-expanded", "false");
+  }
+
   function renumberBillingItems() {
     const items = el("billingItems").querySelectorAll(".billing-item");
     items.forEach((box, i) => {
@@ -361,6 +374,7 @@
     const open = body.hidden; // 目前收合 → 要展開
     body.hidden = !open;
     el("billingToggle").setAttribute("aria-expanded", String(open));
+    if (open) { setBillingDone("", ""); setBillingStatus("", ""); } // 重新展開時清掉上次的結果訊息
     // 請款日期與日報日期無關（日報只是填寫入口）：預設今天，不跟著上方日報日期變動
     if (open && !el("bDate").value) el("bDate").value = toDateInputValue(new Date());
   }
@@ -399,7 +413,9 @@
       else if (x.skipped) msg += "（尚無日報分頁，xlsx 會在送出日報後一併顯示）";
       else if (x.warnings && x.warnings.length) msg += "；注意：" + x.warnings.join("；");
       else msg += "，xlsx 日報已更新";
-      setBillingStatus(msg, kind);
+      setBillingStatus("", "");
+      collapseBilling();           // 新增成功後自動收合；欄位內容（日期/區域/期別）保留，再次展開可接著輸入
+      setBillingDone(msg, kind);
     } catch (err) {
       setBillingStatus("新增失敗：" + err.message, "error");
     } finally {

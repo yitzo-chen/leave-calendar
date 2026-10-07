@@ -157,6 +157,7 @@ main { max-width: 720px; margin: 0 auto; padding: 20px; }
 .card-toggle .toggle-arrow { margin-left: auto; font-size: 14px; transition: transform .15s; }
 .card-toggle[aria-expanded="true"] .toggle-arrow { transform: rotate(90deg); }
 #billingBody { margin-top: 12px; }
+#billingDone { margin: 10px 0 0; }
 .billing-item { border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px 2px; margin: 12px 0; }
 .billing-item-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
 .billing-item-title { font-size: 13px; color: var(--text-muted); }

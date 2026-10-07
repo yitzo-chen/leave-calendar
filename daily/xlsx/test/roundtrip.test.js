@@ -124,9 +124,9 @@ async function toBuf(parts) {
     const s = x.Sheets["115.9.19"];
     return eq([s.A8.v, s.D8.v, s.E8.v, s.F8.v, s.J5.v, s.N5.v, s.P5.v], ["公司工", 2, 2, 3, "日期：115", 9, 19]);
   });
-  T("R15", "SheetJS 合併數 214、不再有整塊備註框 A46:S52，含請款表 E46:G46 與日期 J5:L5", () => {
+  T("R15", "SheetJS 合併數 221、不再有整塊備註框 A46:S52，含請款表 E46:G46 與日期 J5:L5", () => {
     const m = x.Sheets["115.9.19"]["!merges"].map((r) => XLSX.utils.encode_range(r));
-    return eq([m.length, m.includes("A46:S52"), m.includes("E46:G46"), m.includes("J5:L5")], [214, false, true, true]);
+    return eq([m.length, m.includes("A46:S52"), m.includes("E46:G46"), m.includes("J5:L5")], [221, false, true, true]);
   });
   T("R16", "檔案大小合理（3 天 < 40KB）", () => buf.length < 40000 || buf.length);
 
@@ -142,7 +142,7 @@ async function toBuf(parts) {
   const bsA = build("2026-10-07", { billing: billRows });
   const wsA = await wsOf(bsA);
   T("R20", "請款表：10/7 只有 10/5 那一列（之後的請款資料不影響舊日期）；金額/累計/元/進度比例0.2(顯示20%，不另寫%)/備註/發票就位", () => eq(
-    [wsA.A47.v, wsA.C47.v, wsA.E47.v, wsA.H47.v, wsA.I47.v, wsA.M47.v, wsA.N47.v, wsA.P47 === undefined, wsA.Q47.v, wsA.S47.v, wsA.A48 === undefined],
+    [wsA.A47.v, wsA.C47.v, wsA.E47.v, wsA.H47.v, wsA.I47.v, wsA.M47.v, wsA.N47.v, wsA.O47 === undefined, wsA.P47.v, wsA.R47.v, wsA.A48 === undefined],
     ["變電站", "第1期", 1000000, "元", 0, "元", 0.2, true, "含保留款，未稅", "AB123", true]));
   T("R21", "請款表總合計：保留 SUM 公式並寫入快取值（本期 1,000,000／累計至上期 0）", () => eq(
     [wsA.E52.f, wsA.E52.v, wsA.I52.f, wsA.I52.v, wsA.A52.v], ["SUM(E47:G51)", 1000000, "SUM(I47:L51)", 0, "總合計："]));
@@ -179,7 +179,7 @@ async function toBuf(parts) {
     XB.remarkLines(rem, "2026-10-08"), ["115.10.5 測量人員:甲、乙", "115.10.7 第一行", "115.10.7 第二行"]));
   const wsR = await wsOf(build("2026-10-08", { remarks: rem }));
   T("R28", "備註累加寫在 U7 標題之下 U8 起；U8 之前與列印範圍內沒有備註文字", () => eq(
-    [wsR.U7.v, wsR.U8.v, wsR.U9.v, wsR.U10.v, wsR.U11 === undefined, wsR.A46.v, wsR.Q46.v], ["註：", "115.10.5 測量人員:甲、乙", "115.10.7 第一行", "115.10.7 第二行", true, "區域", "備註"]));
+    [wsR.U7.v, wsR.U8.v, wsR.U9.v, wsR.U10.v, wsR.U11 === undefined, wsR.A46.v, wsR.P46.v], ["註：", "115.10.5 測量人員:甲、乙", "115.10.7 第一行", "115.10.7 第二行", true, "區域", "備註"]));
   T("R29", "同一天重複日期只取最後一筆", () => eq(
     XB.remarkLines([{ date: "2026-10-05", text: "舊" }, { date: "2026-10-05", text: "新" }], "2026-10-05"), ["115.10.5 新"]));
   const longRem = [];

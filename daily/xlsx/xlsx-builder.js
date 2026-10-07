@@ -266,7 +266,7 @@ var XlsxBuilder = (function () {
     });
 
     var shrinkRefs = refsOf("M", 34, 45).concat(refsOf("P", 34, 45), ["J34", "J37", "J40", "J43", "O53"],
-      refsOf("A", 47, 51), refsOf("C", 47, 51), refsOf("Q", 47, 51), refsOf("S", 47, 51)); // 後四組＝請款表的區域/期別/備註/發票
+      refsOf("A", 47, 51), refsOf("C", 47, 51), refsOf("P", 47, 51), refsOf("R", 47, 51)); // 後四組＝請款表的區域/期別/備註(P:Q)/發票(R:S)
     shrinkRefs.forEach(function (ref) { apply(ref, "shrink", shrink); });
 
     apply("J5", "date", { align: { horizontal: "right", shrinkToFit: "1", wrapText: null } });
@@ -529,8 +529,8 @@ var XlsxBuilder = (function () {
       xml = setCell(xml, "I" + brow, bl.prev);
       xml = setCell(xml, "M" + brow, "元");
       if (bl.progress !== "") xml = setCell(xml, "N" + brow, bl.progress); // N 欄是 0.00% 格式，不另寫「%」單位
-      xml = setCell(xml, "Q" + brow, bl.remark);
-      xml = setCell(xml, "S" + brow, bl.invoice);
+      xml = setCell(xml, "P" + brow, bl.remark);
+      xml = setCell(xml, "R" + brow, bl.invoice);
     }
     xml = setFormulaCell(xml, "E" + BILLING.totalRow, "SUM(E" + BILLING.firstRow + ":G" + (BILLING.firstRow + BILLING.cap - 1) + ")", bill.totalAmount);
     xml = setFormulaCell(xml, "I" + BILLING.totalRow, "SUM(I" + BILLING.firstRow + ":L" + (BILLING.firstRow + BILLING.cap - 1) + ")", bill.totalPrev);

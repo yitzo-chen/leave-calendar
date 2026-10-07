@@ -108,11 +108,11 @@ const F = (env) => Object.values(env.state.files).find((f) => f.name === OUTPUT_
     e2.state.files[e2.state.props["XLSX_FILE_ID_" + CASE_ID]] && (e2.ctx.UrlFetchApp.fetch = () => ({ getResponseCode: () => 500, getContentText: () => "boom" }));
     try { e2.call(call2("xlsxUpdateForDate", "2026-09-20")); return "應該要丟錯"; } catch (e) { return /HTTP 500/.test(String(e.message)) || String(e.message); }
   });
-  T("G14", "產出的 xlsx 可被 SheetJS 完整讀回（分頁數與合併數 214）", () => {
+  T("G14", "產出的 xlsx 可被 SheetJS 完整讀回（分頁數與合併數 221）", () => {
     const e2 = makeGlueEnv({ sheetsData: baseSheets(), driveFiles: { "日報範本.xlsx": TEMPLATE_BYTES } });
     e2.call(`xlsxRebuildAll('${CASE_ID}')`);
     const wb = sheetVals(Object.values(e2.state.files).find((f) => f.name === OUTPUT_NAME).bytes);
-    return eq([wb.SheetNames, wb.Sheets["115.9.18"]["!merges"].length], [["115.9.18", "115.9.20"], 214]);
+    return eq([wb.SheetNames, wb.Sheets["115.9.18"]["!merges"].length], [["115.9.18", "115.9.20"], 221]);
   });
   // ---------- 請款資料與備註累加（2026-10-07）----------
   const billingSheets = () => {
@@ -133,7 +133,7 @@ const F = (env) => Object.values(env.state.files).find((f) => f.name === OUTPUT_
   T("G15", "請款資料：重建後 9/18 只有當天的 2 列（土建第1期、機電第1期[民國日期]），別案場與之後日期的列不出現；壞日期警告 1 則", () => {
     rb = eb.call(`xlsxRebuildAll('${CASE_ID}')`);
     const s = sheetVals(F(eb).bytes).Sheets["115.9.18"];
-    return eq([s.A47.v, s.C47.v, s.E47.v, s.I47.v, s.N47.v, s.Q47.v, s.S47.v, s.A48.v, s.C48.v, s.E48.v, s.N48 === undefined, s.A49 === undefined, s.E52.v,
+    return eq([s.A47.v, s.C47.v, s.E47.v, s.I47.v, s.N47.v, s.P47.v, s.R47.v, s.A48.v, s.C48.v, s.E48.v, s.N48 === undefined, s.A49 === undefined, s.E52.v,
       rb.warnings.filter((w) => /請款資料第 6 列/.test(w)).length],
       ["土建", "第1期", 1000000, 0, 0.2, "含保留款", "AB-1", "機電", "第1期", 300000, true, true, 1300000, 1]);
   });
@@ -144,7 +144,7 @@ const F = (env) => Object.values(env.state.files).find((f) => f.name === OUTPUT_
     return eq([s.A47.v, s.C47.v, s.A48.v, s.A49.v, s.C49.v, s.E49.v, s.I49.v, s.N49.v, s.A50 === undefined, s.E52.v, s.I52.v],
       ["土建", "第1期", "機電", "土建", "第2期", 2500000, 1000000, 0.35, true, 3800000, 1000000]);
   });
-  T("G17", "發票欄收到日期物件：轉成「月/日」文字 10/3", () => eq(sheetVals(F(eb).bytes).Sheets["115.9.20"].S49 && sheetVals(F(eb).bytes).Sheets["115.9.20"].S49.v, "10/3"));
+  T("G17", "發票欄收到日期物件：轉成「月/日」文字 10/3", () => eq(sheetVals(F(eb).bytes).Sheets["115.9.20"].R49 && sheetVals(F(eb).bytes).Sheets["115.9.20"].R49.v, "10/3"));
   T("G18", "備註累加：9/18 分頁 U8＝9/18 備註；9/20 分頁依序列出 9/18、9/20（兩行拆兩列），都在 U 欄", () => {
     const wb = sheetVals(F(eb).bytes);
     const a = wb.Sheets["115.9.18"], b = wb.Sheets["115.9.20"];

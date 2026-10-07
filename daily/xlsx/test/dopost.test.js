@@ -142,7 +142,7 @@ const submit = (date, cong) => ({
     const r = eb.post(bill());
     const row = billRows(eb)[1], wb = book(eb);
     const a = wb.Sheets["115.9.20"], b = wb.Sheets["115.9.21"];
-    return eq([r.ok, r.xlsx.ok, row.slice(0, 8), billRows(eb).length, a.A47.v, a.E47.v, a.N47.v, a.Q47.v, a.S47.v, b.C47.v], [true, true, [CASE_ID, "2026-09-20", "土建", "第1期", 1500000, 0.35, "含保留款", "AB-1"], 5, "土建", 1500000, 0.35, "含保留款", "AB-1", "第1期"]);
+    return eq([r.ok, r.xlsx.ok, row.slice(0, 8), billRows(eb).length, a.A47.v, a.E47.v, a.N47.v, a.P47.v, a.R47.v, b.C47.v], [true, true, [CASE_ID, "2026-09-20", "土建", "第1期", 1500000, 0.35, "含保留款", "AB-1"], 5, "土建", 1500000, 0.35, "含保留款", "AB-1", "第1期"]);
   });
   T("P13", "第二筆新增在第3列（往下找空白列）；同區域下一期的累計至上期＝第1期金額", () => {
     const r = eb.post(bill({ date: "2026-09-21", period: "第2期", amount: 700000, progress: 50 }));
