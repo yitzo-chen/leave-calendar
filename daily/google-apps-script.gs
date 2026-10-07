@@ -7,9 +7,10 @@
 var SHEET_LIST = "工種機具材料清單";
 var SHEET_RECORD = "日報記錄";
 var SHEET_HEADER = "日報頭";
-var SHEET_BASIC = "基本資料"; // 舊版單一案場的基本資料，已被「案場設定」取代，保留不刪（不使用）
+var SHEET_BASIC = "基本資料"; // 舊版單一案場的基本資料，已被「案場設定」取代；setupSheets 不再建立，可直接刪除該分頁（僅首次遷移時才讀）
 var SHEET_ATTENDANCE = "本工出勤";
 var SHEET_INTERNAL = "內部記錄"; // 選工/備註兩種日誌型記錄，僅後台查看，不進列印/xlsx
+var SHEET_BILLING = "請款資料"; // 使用者直接在試算表輸入；顯示在 xlsx 日報的請款表（A46:S52），欄位：案場｜請款日期｜區域｜期別｜本期請款金額｜目前進度｜備註｜發票
 var SHEET_CASES = "案場設定"; // 多案場：一案場一列，取代舊版單列的「基本資料」
 
 // 各資料表「案場」欄位的欄號（一律補在既有欄位最後面，比照當初新增主任/工安欄位的作法：
@@ -26,22 +27,13 @@ var DEFAULT_CASE_ID = "lng"; // 既有資料（洲際LNG）遷移時要補上的
 function setupSheets() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
 
-  var basic = ss.getSheetByName(SHEET_BASIC) || ss.insertSheet(SHEET_BASIC);
-  if (basic.getRange(1, 1).getValue() === "") {
-    basic.getRange(1, 1, 5, 2).setValues([
-      ["業主", ""],
-      ["工程名稱", "洲際液化天然氣接收站"],
-      ["合約金額（元）", ""],
-      ["開工日期（YYYY/MM/DD）", ""],
-      ["公司名稱", ""],
-    ]);
-  }
-
-  // 「案場設定」：一案場一列，取代上面「基本資料」單列的角色。首次建立時，
-  // 從既有「基本資料」的值遷移出一列（案場代碼＝DEFAULT_CASE_ID），之後新增案場只要在這張表加一列即可，不用改程式碼。
+  // 「案場設定」是唯一的基本資料來源（一案場一列）。首次建立時，若試算表還留著舊的「基本資料」分頁，
+  // 才從它的值遷移出一列（案場代碼＝DEFAULT_CASE_ID）；沒有該分頁就用預設值，且不會再自動重建「基本資料」。
+  // 之後新增案場只要在這張表加一列即可，不用改程式碼。
+  var basic = ss.getSheetByName(SHEET_BASIC);
   var cases = ss.getSheetByName(SHEET_CASES) || ss.insertSheet(SHEET_CASES);
   if (cases.getRange(1, 1).getValue() === "") {
-    var basicVals = basic.getRange(1, 1, 5, 2).getValues();
+    var basicVals = basic ? basic.getRange(1, 1, 5, 2).getValues() : [["工程名稱", "洲際液化天然氣接收站"]];
     var basicObj = {};
     basicVals.forEach(function (r) { basicObj[r[0]] = r[1]; });
     cases.getRange(1, 1, 1, 7).setValues([["案場代碼", "案場名稱", "啟用中", "業主", "合約金額（元）", "開工日期（YYYY/MM/DD）", "公司名稱"]]);
@@ -107,6 +99,60 @@ function setupSheets() {
   }
   setDateColumnText(internal);
   ensureCaseColumn(internal, CASE_COL_INTERNAL);
+
+  // 「請款資料」：一列一期請款，案場放第 1 欄（下拉選「案場設定」的代碼）。「累計至上期請款金額」不用填，
+  // 產生 xlsx 時依同案場同區域的前幾期自動算；請款日期決定從哪一天的日報開始顯示（舊日期的日報不受影響）。
+  var billing = ss.getSheetByName(SHEET_BILLING) || ss.insertSheet(SHEET_BILLING);
+  if (billing.getRange(1, 1).getValue() === "") {
+    billing.getRange(1, 1, 1, 8).setValues([["案場", "請款日期", "區域", "期別", "本期請款金額", "目前進度", "備註", "發票"]]);
+    var billingCaseRule = SpreadsheetApp.newDataValidation().requireValueInRange(cases.getRange("A2:A500"), true).build();
+    billing.getRange(2, 1, 500, 1).setDataValidation(billingCaseRule);
+    billing.getRange(2, 2, 500, 1).setNumberFormat("@"); // 請款日期純文字（2026-10-05、2026/10/5、115.10.5 都可）
+    billing.getRange(2, 5, 500, 1).setNumberFormat("#,##0");
+    billing.getRange(2, 6, 500, 1).setNumberFormat("0.00%"); // 輸入 35 或 35% 都會是 35%
+  }
+
+  // 給不同使用者看的操作說明：寫在資料欄右側的 J 欄（每次 setupSheets 都會重寫成最新版，請勿在此輸入資料）
+  writeSheetGuide_(cases, GUIDE_COL, CASES_GUIDE);
+  writeSheetGuide_(billing, GUIDE_COL, BILLING_GUIDE);
+}
+
+var GUIDE_COL = 10; // J 欄：兩張設定分頁的資料欄都在 A~H 以內
+var UPDATE_STEPS = [
+  "【如何把修改套用到 Drive 的 xlsx 日報】",
+  "1. 修改完成後，點上方選單「日報管理」→「更新全部日報（套用案場設定）」。",
+  "2. 跳出確認視窗，按「是」。第一次使用 Google 會要求授權：選你的帳號→「進階」→「前往（不安全）」→「允許」，再重按一次選單。",
+  "3. 等候約 1~2 分鐘（日報天數越多越久），出現「更新完成」視窗即可。每個案場各顯示一行結果，有「失敗」請截圖給系統管理員。",
+  "4. 更新只會重寫 xlsx 的抬頭與請款表，不會改動日報內容與累計。Drive 上的 xlsx 只當輸出檔，請勿手動改格子（下次更新會被覆蓋）。",
+];
+var CASES_GUIDE = [
+  "📌 使用說明（程式維護，請勿在此欄輸入資料）",
+  "這張表是日報「基本資料」的唯一來源：一個案場一列（案場代碼／案場名稱／啟用中／業主／合約金額／開工日期／公司名稱）。",
+  "・網頁「列印日報」：修改後重新整理網頁就生效，舊日期與新日期都一樣。",
+  "・Drive 的 xlsx 日報：修改後不會自動更新，需照下面步驟按一次更新。",
+  "・「案場代碼」建立後請勿更改（舊資料靠它對應案場）；不用的案場把「啟用中」改成 FALSE，不要刪列。",
+  "・新增案場：在最下方空白列填一列，或在日報網頁按「＋新增案場」。",
+  "",
+].concat(UPDATE_STEPS);
+var BILLING_GUIDE = [
+  "📌 使用說明（程式維護，請勿在此欄輸入資料）",
+  "這張表是 xlsx 日報「請款表」的資料來源：一列一期請款。",
+  "・案場：用下拉選單選（來自「案場設定」的代碼）。",
+  "・請款日期：從這一天的日報開始顯示，之前日期的日報不受影響。可輸入 2026-10-05、2026/10/5 或民國 115.10.5。",
+  "・本期請款金額：填數字（可含千分位逗號）。目前進度：填 35 或 35% 皆可。區域、期別、備註、發票：自由輸入（發票可填日期）。",
+  "・「累計至上期請款金額」不用填：系統依同案場、同區域、較早的各期自動加總。",
+  "・日報請款表最多顯示 5 列（最新的 5 列，超過會在更新結果警告）。超過時請自行把舊的幾期合併成一列累加金額，並刪除被合併的列。",
+  "・網頁「列印日報」不印請款表；請款表只出現在 Drive 的 xlsx 日報。請勿更動第 1 列表頭與欄位順序。",
+  "",
+].concat(UPDATE_STEPS);
+
+// 在指定欄由上而下寫入說明文字（自動換行、淡黃底、第一列粗體），欄寬放寬以便閱讀
+function writeSheetGuide_(sheet, col, lines) {
+  var range = sheet.getRange(1, col, lines.length, 1);
+  range.setValues(lines.map(function (l) { return [l]; }));
+  range.setWrap(true).setVerticalAlignment("top").setBackground("#fff8e1");
+  sheet.getRange(1, col).setFontWeight("bold");
+  sheet.setColumnWidth(col, 520);
 }
 
 // 補上「案場」欄位（若表頭已經是「案場」代表已migrate過，跳過）；既有資料列補上 DEFAULT_CASE_ID，
@@ -130,6 +176,23 @@ function ensureCaseColumn(sheet, caseColIndex) {
 function setDateColumnText(sheet) {
   var rows = Math.max(sheet.getMaxRows() - 1, 1);
   sheet.getRange(2, 1, rows, 1).setNumberFormat("@");
+}
+
+// 在資料欄（前 values.length 欄）的第一個空白列寫入一列。「案場設定」「請款資料」的 J 欄有說明文字，
+// appendRow 會接在說明文字最後一列之後（中間空一大段），所以改用這個函式往上找空白列。回傳寫入的列號。
+function appendRowTop_(sheet, values) {
+  var width = values.length;
+  var lastRow = sheet.getLastRow();
+  var data = lastRow >= 2 ? sheet.getRange(2, 1, lastRow - 1, width).getValues() : [];
+  var row = Math.max(lastRow, 1) + 1;
+  for (var i = 0; i < data.length; i++) {
+    var blank = true;
+    for (var j = 0; j < width; j++) { if (data[i][j] !== "" && data[i][j] !== null) { blank = false; break; } }
+    if (blank) { row = i + 2; break; }
+  }
+  ensureRows(sheet, row);
+  sheet.getRange(row, 1, 1, width).setValues([values]);
+  return row;
 }
 
 // 寫入前確保分頁列數足夠：真實 Sheets 對超出列數的 setValues 會丟例外（只有 appendRow 會自動擴充），
@@ -273,6 +336,7 @@ function unsanitizeCell(v) {
 // ---------- 送出資料驗證：在寫入任何資料之前先全部驗完，任何不合法就整個拒絕（全有或全無） ----------
 var MAX_LONG_TEXT = 2000;  // 備註、本日/明日施工項目
 var MAX_SHORT_TEXT = 100;  // 項目名稱、人員姓名、加班原因、天氣、施工狀況、填表人、clientId 等
+var MAX_BILLING_ITEMS = 20; // 網頁一次最多新增的請款項目數
 
 function validationError(msg) {
   var err = new Error(msg);
@@ -289,6 +353,26 @@ function checkText(v, label, max, trim) {
   if (trim) s = s.trim();
   if (s.length > max) throw validationError(label + "過長（上限 " + max + " 字，目前 " + s.length + " 字）");
   return s;
+}
+
+// 金額欄位（請款）：必填；可含千分位逗號；不可為負、不可超過 1 兆；四捨五入到小數 2 位
+function checkMoney(v, label) {
+  if (v === null || v === undefined || (typeof v === "string" && v.trim() === "")) throw validationError("請輸入" + label);
+  if (typeof v !== "number" && typeof v !== "string") throw validationError(label + "格式錯誤（必須是數字）");
+  var n = typeof v === "number" ? v : Number(String(v).replace(/[,\s]/g, ""));
+  if (!isFinite(n)) throw validationError(label + "不是有效的數字");
+  if (n < 0) throw validationError(label + "不可為負數");
+  if (n > 1e12) throw validationError(label + "超出合理範圍");
+  return Math.round(n * 100) / 100;
+}
+// 進度（百分比 0~100，可含 %）：選填；回傳比例（35 → 0.35，試算表該欄是 0.00% 格式），空白回傳 ""
+function checkProgressPct(v, label) {
+  if (v === null || v === undefined || (typeof v === "string" && v.replace(/[%\s]/g, "") === "")) return "";
+  if (typeof v !== "number" && typeof v !== "string") throw validationError(label + "格式錯誤（必須是數字）");
+  var n = typeof v === "number" ? v : Number(String(v).replace(/[%\s,]/g, ""));
+  if (!isFinite(n)) throw validationError(label + "不是有效的數字");
+  if (n < 0 || n > 100) throw validationError(label + "必須在 0 到 100 之間");
+  return Math.round(n * 10000) / 1000000;
 }
 
 // 數量/時數欄位：空值(null/undefined/"")視為 0；非數字、無限大、負數拒絕。
@@ -322,7 +406,7 @@ function doPost(e) {
     var action = data.action || "submit";
     var pwCheck = verifyPassword(String(data.password || ""));
     if (!pwCheck.ok) return respond(pwCheck);
-    if (action !== "submit" && action !== "addItem" && action !== "addCase") return respond({ ok: false, error: "不支援的操作" });
+    if (action !== "submit" && action !== "addItem" && action !== "addCase" && action !== "addBilling") return respond({ ok: false, error: "不支援的操作" });
 
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     if (firstMissingSheet(ss, [SHEET_CASES])) return respond({ ok: false, error: NOT_SETUP_ERROR });
@@ -346,7 +430,7 @@ function doPost(e) {
       for (var ci = 1; ci < caseRows.length; ci++) {
         if (String(caseRows[ci][0]).trim() === newCode) return respond({ ok: false, error: "案場代碼已存在：" + newCode });
       }
-      caseSheet.appendRow([newCode, newName, "TRUE", newOwner, newContract, newStartDate, newCompany]);
+      appendRowTop_(caseSheet, [newCode, newName, "TRUE", newOwner, newContract, newStartDate, newCompany]);
 
       // 選填：從既有案場複製目前的工種/機具/材料清單當新案場的起始清單（各案場清單互相獨立，之後各自維護）
       var copyFrom = String(data.copyFrom || "").trim();
@@ -392,6 +476,66 @@ function doPost(e) {
       }
       listSheet.appendRow([category, sanitizeCell(name), "", "TRUE", caseId]);
       return respond({ ok: true });
+    }
+
+    // ---- 新增請款資料（網頁「請款資料」卡片）：一次可送多個項目、全有或全無；只新增、不覆蓋；修改/刪除請直接到試算表「請款資料」分頁 ----
+    // data.date 為共用的請款日期；data.items 為 [{zone, period, amount, progress, remark, invoice}]（沒有 items 時視為單筆，欄位直接放在 data 上）
+    if (action === "addBilling") {
+      if (firstMissingSheet(ss, [SHEET_BILLING])) return respond({ ok: false, error: "尚未建立「請款資料」分頁，請先執行 setupSheets" });
+      var bDate = checkText(data.date, "請款日期", 20, true);
+      if (!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(bDate) || parseAdminDate(bDate) !== bDate) return respond({ ok: false, error: "請款日期格式錯誤" });
+      var bIn = Array.isArray(data.items) ? data.items : [data];
+      if (!bIn.length) return respond({ ok: false, error: "沒有要新增的請款項目" });
+      if (bIn.length > MAX_BILLING_ITEMS) return respond({ ok: false, error: "一次最多新增 " + MAX_BILLING_ITEMS + " 筆請款項目" });
+
+      // 先全部驗證（任何一項不合法就整批拒絕，不寫入）
+      var bNew = [], bSeen = {};
+      for (var bn = 0; bn < bIn.length; bn++) {
+        var it = bIn[bn] || {};
+        var tag = bIn.length > 1 ? "請款項目 " + (bn + 1) + " 的" : "";
+        var bZone = checkText(it.zone, tag + "區域", MAX_SHORT_TEXT, true);
+        var bPeriod = checkText(it.period, tag + "期別", MAX_SHORT_TEXT, true);
+        if (!bZone) return respond({ ok: false, error: "請輸入" + tag + "區域" });
+        if (!bPeriod) return respond({ ok: false, error: "請輸入" + tag + "期別" });
+        var key = JSON.stringify([bZone, bPeriod]);
+        if (bSeen[key]) return respond({ ok: false, error: "請款項目 " + (bn + 1) + " 與前面的項目重複（區域「" + bZone + "」、期別「" + bPeriod + "」）" });
+        bSeen[key] = true;
+        bNew.push({
+          zone: bZone, period: bPeriod,
+          amount: checkMoney(it.amount, tag + "本期請款金額"),
+          progress: checkProgressPct(it.progress, tag + "目前進度"),
+          remark: checkText(it.remark, tag + "備註", MAX_SHORT_TEXT, true),
+          invoice: checkText(it.invoice, tag + "發票", MAX_SHORT_TEXT, true),
+        });
+      }
+
+      var billingSheet = ss.getSheetByName(SHEET_BILLING);
+      var billingRows = billingSheet.getDataRange().getValues();
+      for (var bi = 1; bi < billingRows.length; bi++) {
+        var br = billingRows[bi];
+        if (String(br[0] || "").trim() !== caseId || xlsxBillingDate_(br[1]) !== bDate) continue;
+        var exZone = unsanitizeCell(br[2]).trim(), exPeriod = unsanitizeCell(br[3]).trim();
+        for (var bk = 0; bk < bNew.length; bk++) {
+          if (bNew[bk].zone === exZone && bNew[bk].period === exPeriod) {
+            return respond({ ok: false, error: "這筆請款資料已存在（" + bDate + "、區域「" + exZone + "」、期別「" + exPeriod + "」），如需修改請到試算表「請款資料」分頁；本批資料都未新增" });
+          }
+        }
+      }
+      for (var bw = 0; bw < bNew.length; bw++) {
+        var nr = bNew[bw];
+        appendRowTop_(billingSheet, [caseId, bDate, sanitizeCell(nr.zone), sanitizeCell(nr.period), nr.amount, nr.progress, sanitizeCell(nr.remark), sanitizeCell(nr.invoice)]);
+      }
+
+      // 更新雲端 xlsx（只更新一次）：請款日期當天及之後的分頁；失敗不影響已寫入的請款資料
+      var bxlsx;
+      try {
+        var bxr = xlsxUpdateForDate(bDate, caseId, caseInfo);
+        bxlsx = { ok: true, url: bxr.url, warnings: bxr.warnings || [] };
+      } catch (bxerr) {
+        // 該案場還沒有任何日報分頁可寫（尚未送出過日報）：沒有東西可更新，不算失敗
+        bxlsx = /沒有任何日期可寫入/.test(String(bxerr)) ? { ok: true, skipped: true, warnings: [] } : { ok: false, error: String(bxerr) };
+      }
+      return respond({ ok: true, added: bNew.length, xlsx: bxlsx });
     }
 
     // ---- 送出／更新當天日報（原本邏輯） ----
@@ -759,7 +903,46 @@ function respond(obj) {
 // 給接手的後台管理人員用：不用逐張資料表找列、也不用碰 xlsx。只有能編輯這份試算表的人看得到選單。
 
 function onOpen() {
-  SpreadsheetApp.getUi().createMenu("日報管理").addItem("刪除某天日報資料…", "adminDeleteDay").addToUi();
+  SpreadsheetApp.getUi().createMenu("日報管理")
+    .addItem("更新全部日報（套用案場設定）", "adminRebuildAll")
+    .addItem("刪除某天日報資料…", "adminDeleteDay")
+    .addToUi();
+}
+
+// 選單「更新全部日報」：修改「案場設定」的公司名稱/業主/工程名稱/合約金額/開工日期後按這個，
+// 依試算表資料重建所有啟用中案場的 xlsx（舊日期＋新日期的抬頭一併更新；日報內容與累計不變）。
+// 逐案場各自 try/catch：某案場失敗（例如還沒有任何日報）不影響其他案場。
+function adminRebuildAll() {
+  var ui = SpreadsheetApp.getUi();
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (firstMissingSheet(ss, [SHEET_CASES])) {
+    ui.alert("無法更新", NOT_SETUP_ERROR, ui.ButtonSet.OK);
+    return;
+  }
+  var rows = ss.getSheetByName(SHEET_CASES).getDataRange().getValues();
+  rows.shift();
+  var active = rows.filter(function (r) { return String(r[2]).trim().toUpperCase() === "TRUE"; });
+  if (!active.length) {
+    ui.alert("無法更新", "「案場設定」目前沒有啟用中的案場。", ui.ButtonSet.OK);
+    return;
+  }
+  var names = active.map(function (r) { return "・" + String(r[0]).trim() + "（" + r[1] + "）"; }).join("\n");
+  if (ui.alert("更新全部日報",
+    "將依「案場設定」的最新資料，重建以下案場的 xlsx（每天的分頁都會更新抬頭）：\n\n" + names +
+    "\n\n日報內容與累計不會改變。Drive 上的 xlsx 只當輸出檔，若曾手動改過格子會被覆蓋。\n確定要更新嗎？",
+    ui.ButtonSet.YES_NO) !== ui.Button.YES) return;
+
+  var lines = active.map(function (r) {
+    var id = String(r[0]).trim();
+    try {
+      var res = xlsxRun_(null, id, getCaseRow_(ss, id));
+      if (res.removed) return "・" + id + "：沒有日報，略過";
+      return "・" + id + "：已更新 " + res.sheets + " 個分頁" + (res.warnings.length ? "（有 " + res.warnings.length + " 則警告，見執行記錄）" : "");
+    } catch (e) {
+      return "・" + id + "：⚠ 失敗：" + e;
+    }
+  });
+  ui.alert("更新完成", lines.join("\n"), ui.ButtonSet.OK);
 }
 
 // 接受 2026-09-21、2026/9/21、115.9.21（民國，年為 3 位數）；不合法回傳空字串，合法回傳 yyyy-mm-dd

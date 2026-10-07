@@ -152,6 +152,15 @@ main { max-width: 720px; margin: 0 auto; padding: 20px; }
 }
 .card h2 { font-size: 14px; margin: 0 0 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .06em; }
 .card-badge { text-transform: none; letter-spacing: normal; font-size: 11px; font-weight: normal; margin-left: 8px; padding: 2px 8px; border-radius: 999px; background: var(--border); color: var(--text-muted); vertical-align: middle; }
+.card-toggle { display: flex; align-items: center; gap: 4px; width: 100%; margin: 0; padding: 0; background: none; border: 0; font: inherit; color: var(--text-muted); text-align: left; cursor: pointer; }
+.card-toggle-title { font-size: 14px; letter-spacing: .06em; }
+.card-toggle .toggle-arrow { margin-left: auto; font-size: 14px; transition: transform .15s; }
+.card-toggle[aria-expanded="true"] .toggle-arrow { transform: rotate(90deg); }
+#billingBody { margin-top: 12px; }
+.billing-item { border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px 2px; margin: 12px 0; }
+.billing-item-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.billing-item-title { font-size: 13px; color: var(--text-muted); }
+.billing-item-remove { padding: 2px 10px; font-size: 12px; }
 .card-divider { border: none; border-top: 1px solid var(--border); margin: 16px 0 12px; }
 
 .pick-head, .pick-row {
@@ -406,8 +415,6 @@ main { max-width: 720px; margin: 0 auto; padding: 20px; }
 
 .pr-label-cell { font-weight: 700; background: #f0f0f0; padding: 2px 5px; font-size: 10.5px; }
 .pr-text-cell { white-space: pre-line; padding: 2px 5px; font-size: 10.5px; min-height: 18px; }
-.pr-remark-box { border: 1px solid #000; margin-bottom: 3px; min-height: 60px; display: flex; flex-direction: column; }
-.pr-remark-box .pr-text-cell { flex: 1; border-top: 1px solid #000; }
 
 .pr-sign-row td { height: 46px; text-align: center; font-weight: 700; vertical-align: top; padding-top: 4px; }
 

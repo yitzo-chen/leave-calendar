@@ -308,6 +308,105 @@
     }
   }
 
+  // ---------- 請款資料卡片：可分別輸入多個請款項目，按一次「新增請款」一併寫入試算表「請款資料」分頁；網頁不列出已填資料（公開網址不顯示金額） ----------
+  function setBillingStatus(text, kind) {
+    const box = el("billingStatus");
+    box.hidden = !text;
+    box.textContent = text;
+    box.className = "form-status" + (kind ? " " + kind : "");
+  }
+
+  function renumberBillingItems() {
+    const items = el("billingItems").querySelectorAll(".billing-item");
+    items.forEach((box, i) => {
+      box.querySelector(".billing-item-title").textContent = "請款項目 " + (i + 1);
+      box.querySelector(".billing-item-remove").hidden = items.length <= 1; // 至少留一項
+    });
+  }
+
+  // 新增一個請款項目區塊；prefill 可帶入區域/期別（「＋新增請款項目」會預填上一項的期別）
+  function addBillingItem(prefill) {
+    const box = document.createElement("div");
+    box.className = "billing-item";
+    box.innerHTML =
+      '<div class="billing-item-head"><span class="billing-item-title"></span>' +
+      '<button type="button" class="ghost-btn billing-item-remove">✕ 移除</button></div>' +
+      '<div class="field-row">' +
+      '<label>區域<input class="bi-zone" type="text" maxlength="100" placeholder="例如 土建" autocomplete="off"></label>' +
+      '<label>期別<input class="bi-period" type="text" maxlength="100" placeholder="例如 第1期" autocomplete="off"></label></div>' +
+      '<div class="field-row">' +
+      '<label>本期請款金額（元）<input class="bi-amount" type="text" inputmode="decimal" maxlength="20" placeholder="例如 1,500,000" autocomplete="off"></label>' +
+      '<label>目前進度（%）<input class="bi-progress" type="text" inputmode="decimal" maxlength="8" placeholder="例如 35（可空白）" autocomplete="off"></label></div>' +
+      '<div class="field-row">' +
+      '<label>發票<input class="bi-invoice" type="text" maxlength="100" placeholder="發票號碼或日期（可空白）" autocomplete="off"></label>' +
+      '<label>備註<input class="bi-remark" type="text" maxlength="100" placeholder="例如 含保留款，未稅（可空白）" autocomplete="off"></label></div>';
+    box.querySelector(".bi-zone").value = (prefill && prefill.zone) || "";
+    box.querySelector(".bi-period").value = (prefill && prefill.period) || "";
+    box.querySelector(".billing-item-remove").addEventListener("click", () => { box.remove(); renumberBillingItems(); });
+    el("billingItems").appendChild(box);
+    renumberBillingItems();
+    return box;
+  }
+
+  // 收集所有項目；區域/金額/進度/發票/備註全空白（只有預填的期別）的項目視為沒填，略過
+  function collectBillingItems() {
+    return Array.from(el("billingItems").querySelectorAll(".billing-item")).map((box, i) => {
+      const g = (cls) => box.querySelector(cls).value.trim();
+      return { no: i + 1, zone: g(".bi-zone"), period: g(".bi-period"), amount: g(".bi-amount"), progress: g(".bi-progress"), invoice: g(".bi-invoice"), remark: g(".bi-remark") };
+    }).filter((it) => it.zone || it.amount || it.progress || it.invoice || it.remark);
+  }
+
+  function toggleBilling() {
+    const body = el("billingBody");
+    const open = body.hidden; // 目前收合 → 要展開
+    body.hidden = !open;
+    el("billingToggle").setAttribute("aria-expanded", String(open));
+    // 請款日期與日報日期無關（日報只是填寫入口）：預設今天，不跟著上方日報日期變動
+    if (open && !el("bDate").value) el("bDate").value = toDateInputValue(new Date());
+  }
+
+  async function submitBilling() {
+    const btn = el("billingSubmitBtn");
+    const date = el("bDate").value;
+    const items = collectBillingItems();
+    if (!date) { setBillingStatus("請選擇請款日期", "error"); return; }
+    if (!items.length) { setBillingStatus("請至少填寫一個請款項目（區域、期別、本期請款金額）", "error"); return; }
+    for (const it of items) {
+      if (!it.zone || !it.period || !it.amount) { setBillingStatus("請款項目 " + it.no + "：區域、期別、本期請款金額為必填", "error"); return; }
+    }
+    const password = el("fPassword").value;
+    if (!password.trim()) { setBillingStatus("請先到上方「備註」卡片輸入通關密碼", "error"); return; }
+    const NL = String.fromCharCode(10);
+    const lines = ["確定新增以下 " + items.length + " 筆請款資料？", "", "請款日期：" + date, ""];
+    items.forEach((it, i) => {
+      lines.push((i + 1) + ". " + it.zone + "｜" + it.period + "｜" + it.amount + " 元" + (it.progress ? "｜進度 " + it.progress + "%" : ""));
+    });
+    lines.push("", "新增後無法在網頁修改或刪除。");
+    if (!window.confirm(lines.join(NL))) return;
+    btn.disabled = true;
+    setBillingStatus("新增中…", "");
+    try {
+      const payloadItems = items.map((it) => ({ zone: it.zone, period: it.period, amount: it.amount, progress: it.progress, remark: it.remark, invoice: it.invoice }));
+      const result = await apiPost({ action: "addBilling", password, date, items: payloadItems });
+      if (!result.ok) throw new Error(result.error || "新增失敗");
+      // 成功：只清金額/進度/發票/備註；日期、區域、期別都保留，方便接著輸入下一期或同期其他資料
+      el("billingItems").querySelectorAll(".billing-item").forEach((box) => {
+        [".bi-amount", ".bi-progress", ".bi-invoice", ".bi-remark"].forEach((cls) => { box.querySelector(cls).value = ""; });
+      });
+      const x = result.xlsx || {};
+      let msg = "已新增 " + (result.added || items.length) + " 筆請款資料", kind = "success";
+      if (x.ok === false) { msg += "，但 Drive 的 xlsx 日報尚未更新（" + x.error + "），請稍後到試算表按「日報管理 → 更新全部日報」"; kind = "error"; }
+      else if (x.skipped) msg += "（尚無日報分頁，xlsx 會在送出日報後一併顯示）";
+      else if (x.warnings && x.warnings.length) msg += "；注意：" + x.warnings.join("；");
+      else msg += "，xlsx 日報已更新";
+      setBillingStatus(msg, kind);
+    } catch (err) {
+      setBillingStatus("新增失敗：" + err.message, "error");
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
   // 材料是直接加總用量，工種/機具是「工天數」邏輯(上午+下午)/2 —— 要跟後端算法一致
   function itemValue(name, am, pm) {
     const item = ITEMS.find((it) => it.name === name);
@@ -633,7 +732,6 @@
     el("prTodayWork").textContent = el("fTodayWork").value.trim();
     el("prTomorrowPlan").textContent = el("fTomorrowPlan").value.trim();
 
-    el("prRemark").textContent = el("fRemark").value.trim();
     el("prReporter").textContent = el("fReporter").value.trim() || "－";
   }
 
@@ -665,6 +763,16 @@
       dateInput.value = toDateInputValue(new Date());
       loadDay(dateInput.value);
     });
+    el("billingToggle").addEventListener("click", toggleBilling);
+    el("billingSubmitBtn").addEventListener("click", submitBilling);
+    addBillingItem();
+    el("billingAddItemBtn").addEventListener("click", () => {
+      const boxes = el("billingItems").querySelectorAll(".billing-item");
+      const last = boxes[boxes.length - 1];
+      addBillingItem({ period: last ? last.querySelector(".bi-period").value.trim() : "" });
+    });
+    // 請款欄位在日報表單裡：按 Enter 不要變成「送出日報」
+    el("billingBody").addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.tagName === "INPUT") e.preventDefault(); });
     el("laborAddBtn").addEventListener("click", () => addItemPrompt("工種", "laborNewName"));
     el("equipmentAddBtn").addEventListener("click", () => addItemPrompt("機具", "equipmentNewName"));
     el("materialAddBtn").addEventListener("click", () => addItemPrompt("材料", "materialNewName"));

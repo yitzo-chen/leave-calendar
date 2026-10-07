@@ -108,11 +108,53 @@ const F = (env) => Object.values(env.state.files).find((f) => f.name === OUTPUT_
     e2.state.files[e2.state.props["XLSX_FILE_ID_" + CASE_ID]] && (e2.ctx.UrlFetchApp.fetch = () => ({ getResponseCode: () => 500, getContentText: () => "boom" }));
     try { e2.call(call2("xlsxUpdateForDate", "2026-09-20")); return "應該要丟錯"; } catch (e) { return /HTTP 500/.test(String(e.message)) || String(e.message); }
   });
-  T("G14", "產出的 xlsx 可被 SheetJS 完整讀回（分頁數與合併數 174）", () => {
+  T("G14", "產出的 xlsx 可被 SheetJS 完整讀回（分頁數與合併數 214）", () => {
     const e2 = makeGlueEnv({ sheetsData: baseSheets(), driveFiles: { "日報範本.xlsx": TEMPLATE_BYTES } });
     e2.call(`xlsxRebuildAll('${CASE_ID}')`);
     const wb = sheetVals(Object.values(e2.state.files).find((f) => f.name === OUTPUT_NAME).bytes);
-    return eq([wb.SheetNames, wb.Sheets["115.9.18"]["!merges"].length], [["115.9.18", "115.9.20"], 174]);
+    return eq([wb.SheetNames, wb.Sheets["115.9.18"]["!merges"].length], [["115.9.18", "115.9.20"], 214]);
+  });
+  // ---------- 請款資料與備註累加（2026-10-07）----------
+  const billingSheets = () => {
+    const sh = baseSheets();
+    sh["日報頭"][1][5] = "測量人員:甲、乙"; // 9/18 備註
+    sh["日報頭"][2][5] = ["業主臨時巡場", "鋼板樁進場"].join(String.fromCharCode(10)); // 9/20 備註（兩行）
+    sh["請款資料"] = [["案場", "請款日期", "區域", "期別", "本期請款金額", "目前進度", "備註", "發票"],
+      [CASE_ID, "2026-09-18", "土建", "第1期", 1000000, 0.2, "含保留款", "AB-1"],
+      [CASE_ID, new Date(Date.UTC(2026, 8, 19)), "土建", "第2期", "2,500,000", "35%", "", new Date(Date.UTC(2026, 9, 3))], // 日期物件、千分位字串、%字串、發票日期
+      ["other", "2026-09-18", "別案", "第1期", 999, 0.1, "", ""],       // 別的案場：不能出現
+      [CASE_ID, "2026-09-25", "土建", "第3期", 700000, 0.5, "", ""],     // 晚於 9/20：9/20 的分頁不能出現
+      [CASE_ID, "abc", "土建", "壞日期", 1, 0, "", ""],                  // 日期無法辨識：略過並警告
+      [CASE_ID, "115.9.18", "機電", "第1期", 300000, "", "", ""]];       // 民國日期
+    return sh;
+  };
+  const eb = makeGlueEnv({ sheetsData: billingSheets(), driveFiles: { "日報範本.xlsx": TEMPLATE_BYTES } });
+  let rb;
+  T("G15", "請款資料：重建後 9/18 只有當天的 2 列（土建第1期、機電第1期[民國日期]），別案場與之後日期的列不出現；壞日期警告 1 則", () => {
+    rb = eb.call(`xlsxRebuildAll('${CASE_ID}')`);
+    const s = sheetVals(F(eb).bytes).Sheets["115.9.18"];
+    return eq([s.A47.v, s.C47.v, s.E47.v, s.I47.v, s.N47.v, s.Q47.v, s.S47.v, s.A48.v, s.C48.v, s.E48.v, s.N48 === undefined, s.A49 === undefined, s.E52.v,
+      rb.warnings.filter((w) => /請款資料第 6 列/.test(w)).length],
+      ["土建", "第1期", 1000000, 0, 0.2, "含保留款", "AB-1", "機電", "第1期", 300000, true, true, 1300000, 1]);
+  });
+  T("G16", "請款資料 9/20：依請款日期排序＝土建第1期、機電第1期、土建第2期（日期物件、\"2,500,000\"、\"35%\"→0.35）；第2期累計至上期＝第1期100萬；9/25 那列不出現", () => {
+    const s = sheetVals(F(eb).bytes).Sheets["115.9.20"];
+    const dump = Object.keys(s).filter((k) => /^[A-Z]+(4[6-9]|5[0-2])$/.test(k)).map((k) => k + "=" + s[k].v).join(" ");
+    if (!s.A47 || !s.A48 || !s.A49) return "請款表區：" + dump;
+    return eq([s.A47.v, s.C47.v, s.A48.v, s.A49.v, s.C49.v, s.E49.v, s.I49.v, s.N49.v, s.A50 === undefined, s.E52.v, s.I52.v],
+      ["土建", "第1期", "機電", "土建", "第2期", 2500000, 1000000, 0.35, true, 3800000, 1000000]);
+  });
+  T("G17", "發票欄收到日期物件：轉成「月/日」文字 10/3", () => eq(sheetVals(F(eb).bytes).Sheets["115.9.20"].S49 && sheetVals(F(eb).bytes).Sheets["115.9.20"].S49.v, "10/3"));
+  T("G18", "備註累加：9/18 分頁 U8＝9/18 備註；9/20 分頁依序列出 9/18、9/20（兩行拆兩列），都在 U 欄", () => {
+    const wb = sheetVals(F(eb).bytes);
+    const a = wb.Sheets["115.9.18"], b = wb.Sheets["115.9.20"];
+    return eq([a.U7.v, a.U8.v, a.U9 === undefined, b.U8.v, b.U9.v, b.U10.v, b.U11 === undefined], ["註：", "115.9.18 測量人員:甲、乙", true, "115.9.18 測量人員:甲、乙", "115.9.20 業主臨時巡場", "115.9.20 鋼板樁進場", true]);
+  });
+  T("G19", "沒有「請款資料」分頁（尚未 setupSheets）：照常重建，請款表是空的、沒有警告", () => {
+    const e2 = makeGlueEnv({ sheetsData: baseSheets(), driveFiles: { "日報範本.xlsx": TEMPLATE_BYTES } });
+    const r = e2.call(`xlsxRebuildAll('${CASE_ID}')`);
+    const s = sheetVals(Object.values(e2.state.files).find((f) => f.name === OUTPUT_NAME).bytes).Sheets["115.9.18"];
+    return eq([r.ok, r.warnings.length, s.A47 === undefined, s.E52.v], [true, 0, true, 0]);
   });
   // 輸出檔留一份供 python 驗證
   const last = makeGlueEnv({ sheetsData: baseSheets(), driveFiles: { "日報範本.xlsx": TEMPLATE_BYTES } });

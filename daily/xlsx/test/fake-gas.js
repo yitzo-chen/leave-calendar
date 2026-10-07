@@ -76,7 +76,7 @@ function makeGlueEnv(opts) {
   for (const [name, bytes] of Object.entries(opts.driveFiles || {})) mkFile(name, bytes);
 
   function sheet(name) {
-    return { getDataRange: () => ({ getValues: () => JSON.parse(JSON.stringify(s.sheetsData[name])) }) };
+    return { getDataRange: () => ({ getValues: () => structuredClone(s.sheetsData[name]) /* 保留 Date 物件，與真實 Sheets 行為一致 */ }) };
   }
   const ctx = {
     console, Logger: { log: () => {} }, JSON, Date, Object, Array, String, Number, Math, RegExp, Error, parseInt, isNaN, isFinite,

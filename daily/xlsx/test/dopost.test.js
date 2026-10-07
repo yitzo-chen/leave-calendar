@@ -23,6 +23,7 @@ function baseSheets() {
     "日報頭": [HDR, ["2026-09-20", "雨", "施工", "第三天", "", "", "王", "c", "t", "甲", "甲", "乙", "乙", CASE_ID]],
     "日報記錄": [["日期", "項目名稱", "上午", "下午", "clientId", "更新時間", "案場"], ["2026-09-20", "公司工", 4, 4, "c", "t", CASE_ID]],
     "本工出勤": [["日期", "人員名稱", "上午", "下午", "上午加班", "下午加班", "加班原因", "clientId", "更新時間", "案場"]],
+    "請款資料": [["案場", "請款日期", "區域", "期別", "本期請款金額", "目前進度", "備註", "發票", "", "使用說明"], ["", "", "", "", "", "", "", "", "", "說明1"], ["", "", "", "", "", "", "", "", "", "說明2"], ["", "", "", "", "", "", "", "", "", "說明3"], ["", "", "", "", "", "", "", "", "", "說明4"]],
     "內部記錄": [["日期", "類型", "類別", "內容", "時間", "備註", "clientId", "更新時間", "案場"]],
   };
 }
@@ -129,6 +130,123 @@ const submit = (date, cong) => ({
     // addItem 需要 appendRow；本測試假分頁不支援，只驗證進入 addItem 分支前不會走到 xlsx
     try { e2.post({ action: "addItem", caseId: CASE_ID, category: "無效", name: "x" }); } catch (e) {}
     return called === 0;
+  });
+
+
+  // ---------- 網頁「請款資料」卡片：addBilling ----------
+  const bill = (extra) => Object.assign({ action: "addBilling", caseId: CASE_ID, date: "2026-09-20", zone: "土建", period: "第1期", amount: "1,500,000", progress: "35%", remark: "含保留款", invoice: "AB-1" }, extra || {});
+  const billRows = (e) => e.state.sheetsData["請款資料"];
+  const eb = makeEnv();
+  T("P12", "新增請款：寫入「請款資料」第一個空白列（第2列，不是接在 J 欄說明之後）；金額去千分位、進度35%→0.35；xlsx 當天與之後分頁出現請款表", () => {
+    eb.post(submit("2026-09-21", 5));
+    const r = eb.post(bill());
+    const row = billRows(eb)[1], wb = book(eb);
+    const a = wb.Sheets["115.9.20"], b = wb.Sheets["115.9.21"];
+    return eq([r.ok, r.xlsx.ok, row.slice(0, 8), billRows(eb).length, a.A47.v, a.E47.v, a.N47.v, a.Q47.v, a.S47.v, b.C47.v], [true, true, [CASE_ID, "2026-09-20", "土建", "第1期", 1500000, 0.35, "含保留款", "AB-1"], 5, "土建", 1500000, 0.35, "含保留款", "AB-1", "第1期"]);
+  });
+  T("P13", "第二筆新增在第3列（往下找空白列）；同區域下一期的累計至上期＝第1期金額", () => {
+    const r = eb.post(bill({ date: "2026-09-21", period: "第2期", amount: 700000, progress: 50 }));
+    const b = book(eb).Sheets["115.9.21"];
+    return eq([r.ok, billRows(eb)[2].slice(2, 6), b.C48.v, b.E48.v, b.I48.v, b.N48.v], [true, ["土建", "第2期", 700000, 0.5], "第2期", 700000, 1500000, 0.5]);
+  });
+  T("P14", "重複（同案場、請款日期、區域、期別）：拒絕、不新增", () => {
+    const n = billRows(eb).length;
+    const r = eb.post(bill());
+    return eq([r.ok, /已存在/.test(r.error), billRows(eb).length], [false, true, n]);
+  });
+  T("P15", "欄位驗證：缺區域/期別/金額、金額負數或非數字、進度>100、日期格式錯、備註過長 → 都拒絕且不新增、不呼叫 xlsx", () => {
+    const e2 = makeEnv(); let called = 0;
+    e2.ctx.xlsxUpdateForDate = () => { called++; return { url: "u" }; };
+    const bad = [{ zone: "" }, { period: " " }, { amount: "" }, { amount: -1 }, { amount: "abc" }, { progress: 150 }, { progress: "x" }, { date: "2026/9/20" }, { date: "2026-02-30" }, { remark: "x".repeat(101) }];
+    const res = bad.map((b) => e2.post(bill(b)).ok);
+    return eq([res.every((x) => x === false), called, billRows(e2).length], [true, 0, 5]);
+  });
+  T("P16", "進度可空白（存成空字串）、金額 0 可以；備註/發票可空白；開頭是 = 的文字會被加單引號防公式注入", () => {
+    const e2 = makeEnv();
+    const r = e2.post(bill({ progress: "", amount: 0, remark: "", invoice: "", zone: "=SUM(A1)" }));
+    const row = billRows(e2)[1];
+    return eq([r.ok, row[4], row[5], row[6], row[7], row[2]], [true, 0, "", "", "", "'=SUM(A1)"]);
+  });
+  T("P17", "xlsx 更新丟例外：請款資料仍寫入且回 ok:true、xlsx:{ok:false,error}", () => {
+    const e2 = makeEnv();
+    e2.ctx.xlsxUpdateForDate = () => { throw new Error("Drive 掛了"); };
+    const r = e2.post(bill());
+    return eq([r.ok, r.xlsx.ok, /Drive 掛了/.test(r.xlsx.error), billRows(e2)[1][2]], [true, false, true, "土建"]);
+  });
+  T("P18", "該案場還沒有任何日報分頁可寫（請款日期早於所有日報且 xlsx 尚未建立）：請款資料照寫，xlsx 視為略過而不是失敗", () => {
+    const e2 = makeEnv();
+    const r = e2.post(bill({ date: "2026-09-01" }));
+    return eq([r.ok, r.xlsx.ok, r.xlsx.skipped === true, billRows(e2).length], [true, true, true, 5]);
+  });
+  T("P19", "密碼錯誤／案場不存在：被擋、不新增；沒有「請款資料」分頁：回清楚錯誤", () => {
+    const e2 = makeEnv(); let called = 0;
+    e2.ctx.PropertiesService = { getScriptProperties: () => ({ getProperty: (k) => (k === "SUBMIT_PASSWORD" ? "pw" : null) }) };
+    e2.ctx.xlsxUpdateForDate = () => { called++; return { url: "u" }; };
+    const a = e2.post(Object.assign(bill(), { password: "bad" }));
+    const e3 = makeEnv(); e3.ctx.xlsxUpdateForDate = () => { called++; return { url: "u" }; };
+    const b = e3.post(bill({ caseId: "不存在的案場" }));
+    const e4 = makeEnv(); delete e4.state.sheetsData["請款資料"];
+    const c = e4.post(bill());
+    return eq([a.ok, billRows(e2).length, b.ok, /案場不存在/.test(b.error), billRows(e3).length, c.ok, /請款資料/.test(c.error), called], [false, 5, false, true, 5, false, true, 0]);
+  });
+  T("P20", "新增案場(addCase)也寫在第一個空白列（案場設定 J 欄有說明文字時不會接在說明後面）", () => {
+    const e2 = makeEnv();
+    const cs = e2.state.sheetsData["案場設定"];
+    cs[0][9] = "使用說明"; for (let i = 1; i <= 4; i++) { cs[i] = cs[i] || []; while (cs[i].length < 9) cs[i].push(""); cs[i][9] = "說明" + i; }
+    const r = e2.post({ action: "addCase", code: "kh", name: "高雄案", owner: "甲", contract: "", startDate: "", company: "乙" });
+    return eq([r.ok, cs[2].slice(0, 3), cs.length], [true, ["kh", "高雄案", "TRUE"], 5]);
+  });
+
+
+  // ---------- 一次新增多個請款項目（共用請款日期，全有或全無，只更新一次 xlsx）----------
+  const items3 = [
+    { zone: "土建", period: "第3期", amount: "1,000,000", progress: "10", remark: "", invoice: "A1" },
+    { zone: "機電", period: "第3期", amount: 500000, progress: "", remark: "含保留款", invoice: "" },
+    { zone: "景觀", period: "第3期", amount: "300,000.5", progress: "5%", remark: "", invoice: "" },
+  ];
+  const multi = (items, extra) => Object.assign({ action: "addBilling", caseId: CASE_ID, date: "2026-09-20", items }, extra || {});
+  T("P21", "多項目：3 筆一次寫入（第2、3、4 列）、回 added=3、xlsx 只更新一次、請款表依序顯示、累計各區域獨立", () => {
+    const e2 = makeEnv(); let called = 0; const real = e2.ctx.xlsxUpdateForDate;
+    e2.post(submit("2026-09-21", 5));
+    e2.ctx.xlsxUpdateForDate = function () { called++; return real.apply(this, arguments); };
+    const r = e2.post(multi(items3));
+    const rows = billRows(e2), a = book(e2).Sheets["115.9.20"];
+    return eq([r.ok, r.added, r.xlsx.ok, called, rows[1].slice(2, 6), rows[2].slice(2, 6), rows[3].slice(2, 6), a.A47.v, a.A48.v, a.A49.v, a.E52.v, a.I52.v],
+      [true, 3, true, 1, ["土建", "第3期", 1000000, 0.1], ["機電", "第3期", 500000, ""], ["景觀", "第3期", 300000.5, 0.05], "土建", "機電", "景觀", 1800000.5, 0]);
+  });
+  T("P22", "全有或全無：第2項金額不合法 → 整批拒絕、一筆都不新增、不呼叫 xlsx，錯誤訊息指出是哪一項", () => {
+    const e2 = makeEnv(); let called = 0;
+    e2.ctx.xlsxUpdateForDate = () => { called++; return { url: "u" }; };
+    const items = [items3[0], Object.assign({}, items3[1], { amount: "abc" }), items3[2]];
+    const r = e2.post(multi(items));
+    return eq([r.ok, /請款項目 2/.test(r.error), billRows(e2).length, called], [false, true, 5, 0]);
+  });
+  T("P23", "批次內重複（同區域＋期別）或與既有資料重複：整批拒絕，不新增", () => {
+    const e2 = makeEnv();
+    const dup = e2.post(multi([items3[0], items3[1], Object.assign({}, items3[0], { amount: 1 })]));
+    e2.post(bill());                                            // 先寫入一筆 土建 第1期
+    const n = billRows(e2).length;
+    const exist = e2.post(multi([items3[1], { zone: "土建", period: "第1期", amount: 1 }]));
+    return eq([dup.ok, /重複/.test(dup.error), exist.ok, /已存在/.test(exist.error), billRows(e2).length], [false, true, false, true, n]);
+  });
+  T("P24", "空項目清單、超過 20 筆：拒絕；單筆舊格式(欄位直接放在 data)仍可用", () => {
+    const e2 = makeEnv();
+    const none = e2.post(multi([]));
+    const tooMany = e2.post(multi(Array.from({ length: 21 }, (_, i) => ({ zone: "z" + i, period: "p", amount: 1 }))));
+    const legacy = e2.post(bill());
+    return eq([none.ok, tooMany.ok, /最多/.test(tooMany.error), legacy.ok, legacy.added, billRows(e2)[1][2]], [false, false, true, true, 1, "土建"]);
+  });
+
+
+  T("P25", "請款日期與日報日期無關：請款日期晚於所有既有日報 → 既有分頁不變、xlsx 回 ok；之後送出該日期之後的日報，分頁才顯示這筆", () => {
+    const e2 = makeEnv();
+    e2.post(submit("2026-09-21", 5));
+    const before = book(e2).Sheets["115.9.21"].A47;
+    const r = e2.post(bill({ date: "2026-12-31", amount: 900000, progress: 70 }));
+    const mid = book(e2);
+    const later = e2.post(submit("2027-01-02", 3));
+    const s2 = book(e2).Sheets["116.1.2"];
+    return eq([before === undefined, r.ok, r.xlsx.ok, mid.Sheets["115.9.21"].A47 === undefined, later.xlsx.ok, s2.A47.v, s2.E47.v, s2.N47.v], [true, true, true, true, true, "土建", 900000, 0.7]);
   });
 
   R.forEach((r) => console.log("[" + r[1] + "] " + r[0] + " " + r[2] + (r[3] ? "\n      -> " + r[3] : "")));

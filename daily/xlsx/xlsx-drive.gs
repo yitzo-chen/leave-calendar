@@ -107,7 +107,7 @@ function xlsxLoadDb_(caseId, caseInfo) {
     return v;
   }
   // 以日期/項目名稱當 key 的物件用無原型物件，避免 constructor / __proto__ 等名稱汙染
-  var db = { headers: {}, recordsByDate: {}, attendanceByDate: {}, catalog: [], categoryByName: Object.create(null), basic: {}, records: [], warnings: [] };
+  var db = { headers: {}, recordsByDate: {}, attendanceByDate: {}, catalog: [], categoryByName: Object.create(null), basic: {}, records: [], billing: [], remarks: [], warnings: [] };
 
   db.basic = {
     "業主": (caseInfo && caseInfo.owner) || "",
@@ -154,8 +154,43 @@ function xlsxLoadDb_(caseId, caseInfo) {
     });
   });
 
+  // 每日備註：xlsx 的 U 欄逐日累加（到該日為止所有日期的備註），由 builder 依日期篩選
+  Object.keys(db.headers).forEach(function (d) {
+    if (String(db.headers[d].remark || "").trim()) db.remarks.push({ date: d, text: db.headers[d].remark });
+  });
+
+  // 請款資料（分頁不存在＝尚未建立，視為沒有請款資料）：欄位 案場｜請款日期｜區域｜期別｜本期請款金額｜目前進度｜備註｜發票
+  var billingSheet = ss.getSheetByName(SHEET_BILLING);
+  if (billingSheet) {
+    var bv = billingSheet.getDataRange().getValues();
+    bv.shift();
+    bv.forEach(function (r, i) {
+      if (String(r[0] || "").trim() !== caseId) return;
+      var d = xlsxBillingDate_(r[1]);
+      if (!d) { db.warnings.push("請款資料第 " + (i + 2) + " 列的請款日期無法辨識（" + r[1] + "），已略過"); return; }
+      db.billing.push({
+        date: d, zone: unsanitizeCell(r[2]), period: unsanitizeCell(r[3]), amount: r[4], progress: r[5],
+        remark: unsanitizeCell(r[6]), invoice: xlsxBillingInvoice_(r[7]),
+      });
+    });
+  }
+
   db.cumByDate = XlsxBuilder.computeCumulatives(db.records, db.categoryByName, db.warnings);
   return db;
+}
+
+/** 請款日期：Date 物件、2026-10-05、2026/10/5、民國 115.10.5 都接受；無法辨識回傳 "" */
+function xlsxBillingDate_(v) {
+  if (v instanceof Date) return normalizeDate(v);
+  return parseAdminDate(v);
+}
+/** 發票：試算表若設成日期格式會讀到 Date，轉成「月/日」文字（與範本發票欄 m/d 格式一致）；其餘當文字 */
+function xlsxBillingInvoice_(v) {
+  if (v instanceof Date) {
+    var p = normalizeDate(v).split("-");
+    return Number(p[1]) + "/" + Number(p[2]);
+  }
+  return unsanitizeCell(v);
 }
 
 /** 組出某一天要交給 XlsxBuilder.buildDaySheet 的資料；該日沒有日報頭則回傳 null */
@@ -170,7 +205,7 @@ function xlsxDayData_(db, date) {
     if (!c.active && !t) return; // 已停用的項目，只有當天有紀錄才列出
     items.push({ category: c.category, name: c.name, am: t ? t.am : 0, pm: t ? t.pm : 0, cumulative: cum[c.name] || 0 });
   });
-  return { date: date, basic: db.basic, header: h, items: items, attendance: db.attendanceByDate[date] || [] };
+  return { date: date, basic: db.basic, header: h, items: items, attendance: db.attendanceByDate[date] || [], billing: db.billing, remarks: db.remarks };
 }
 
 // ---------- 對外入口 ----------

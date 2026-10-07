@@ -179,11 +179,40 @@
     "overflowPolicy": "每時段最多 6 人；超過時有加班的人優先，其餘姓名以『、』併入第 6 列並在回傳中警告",
     "note": "P33:S33 ~ P45:S45 共13個新增；加上備註區 -41 +1，最終合併數 175"
   },
-  "remarks": {
+  "billing": {
+    "_說明": "2026-10-07 改版（取代舊的整塊備註框 A46:S52）：請款表。版面取自使用者本機 115.10.6 分頁，新範本＝日報範本_新版.xlsx，由 port_template_請款表.py 產生",
     "region": "A46:S52",
-    "decision": "整塊合併成單一方塊：刪除該區既有41個小合併，新增 A46:S52，左上 A46 寫『備註：…』",
-    "existingMergesRemoved": 41,
-    "needsUserConfirm": false
+    "headerRow": 46,
+    "dataRows": [47, 48, 49, 50, 51],
+    "totalRow": 52,
+    "capacity": 5,
+    "columns": {
+      "zone": { "cell": "A{r}", "mergedTo": "B{r}", "label": "區域", "type": "string" },
+      "period": { "cell": "C{r}", "mergedTo": "D{r}", "label": "期別", "type": "string" },
+      "amount": { "cell": "E{r}", "mergedTo": "G{r}", "label": "本期請款金額", "type": "number", "unitCell": "H{r}", "unit": "元" },
+      "prevCumulative": { "cell": "I{r}", "mergedTo": "L{r}", "label": "累計至上期請款金額", "type": "number", "unitCell": "M{r}", "unit": "元", "rule": "自動算：同區域、排在此列之前的各列本期請款金額加總（不存進試算表）" },
+      "progress": { "cell": "N{r}", "mergedTo": "O{r}", "label": "目前進度", "type": "number", "format": "0.00%", "rule": "存比例：35→0.35、\"35%\"→0.35、0.35→0.35、1→100%；不再另寫 P 欄「%」(避免與百分比格式重複)；空白則不寫" },
+      "remark": { "cell": "Q{r}", "mergedTo": "R{r}", "label": "備註", "type": "string" },
+      "invoice": { "cell": "S{r}", "label": "發票", "type": "string" }
+    },
+    "total": {
+      "label": { "cell": "A52", "mergedTo": "D52", "text": "總合計：" },
+      "amount": { "cell": "E52", "mergedTo": "G52", "formula": "SUM(E47:G51)", "unitCell": "H52" },
+      "prevCumulative": { "cell": "I52", "mergedTo": "L52", "formula": "SUM(I47:L51)", "unitCell": "M52" },
+      "note": "保留公式並同時寫入計算後的快取值，讓使用者在 Excel 手動改數字時總計仍會連動"
+    },
+    "dataRule": "「請款資料」分頁中 案場相同且請款日期 ≤ 該日分頁日期 的列；超過 5 列只顯示最新 5 列並回傳警告（使用者原則上自行合併成累加金額）；單位『元』只在有資料的列寫入",
+    "mergesInRegion": 41,
+    "printedOnWeb": false
+  },
+  "remarks": {
+    "_說明": "備註移到列印範圍(A:S)之外、不印出；方案A：每天各自記，某日分頁顯示『到當天為止所有日期的備註』",
+    "titleCell": "U7",
+    "titleText": "註：",
+    "firstRow": 8,
+    "column": "U",
+    "format": "每則一列，前綴民國日期（同分頁名格式），例如『115.10.6 測量人員:…』；同一天多行備註各佔一列；空白天/空行略過；超過第 54 列自動往下建立列（列印範圍外）",
+    "decision": "不再寫入 A46（A46 已是請款表『區域』欄位標題）"
   },
   "signature": {
     "chairman": {
@@ -231,7 +260,7 @@
     "格式一律以洲際範本為準；H2 檔只當『雲端以日期為分頁』的樣式參考",
     "公司名稱只取 基本資料.公司名稱，沒填就留空白（不使用範本預設值）",
     "J6 範本文字已由使用者修正為『天氣』",
-    "備註區選擇：整塊合併成單一方塊 A46:S52",
+    "備註區選擇（2026-10-07 改版）：A46:S52 改為請款表，備註移到 U7/U8… 列印範圍外",
     "超出容量：有數字/有加班的優先放入，放不下的以警告回報（預設，使用者未反對）"
   ]
 }

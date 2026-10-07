@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title id="pageTitle">施工日報填寫系統</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23C8630A'/%3E%3Ctext x='50' y='68' font-size='50' text-anchor='middle' fill='white' font-family='Arial'%3E日%3C/text%3E%3C/svg%3E">
-<link rel="stylesheet" href="style.css?v=20260923b">
+<link rel="stylesheet" href="style.css?v=20261007c">
 </head>
 <body>
 <header class="topbar">
@@ -154,6 +154,24 @@
       <p id="passwordHint" class="field-hint">請先輸入密碼才能送出</p>
     </section>
 
+    <section class="card" id="billingSection">
+      <button type="button" id="billingToggle" class="card-toggle" aria-expanded="false" aria-controls="billingBody">
+        <span class="card-toggle-title">請款資料</span>
+        <span class="card-badge">不隨日報送出，按「新增請款」立即寫入</span>
+        <span class="toggle-arrow" aria-hidden="true">▸</span>
+      </button>
+      <div id="billingBody" hidden>
+        <label>請款日期<input id="bDate" type="date"></label>
+        <div id="billingItems"></div>
+        <button type="button" id="billingAddItemBtn" class="ghost-btn">＋新增請款項目</button>
+        <p class="field-hint">可用「＋新增請款項目」分別輸入不同區域/期別的資料，按一次「新增請款」一併寫入。「累計至上期請款金額」不用填，系統會依同區域前幾期自動加總；請款日期當天起的 xlsx 日報會顯示這些項目。新增後無法在網頁修改或刪除，請到試算表「請款資料」分頁處理。需先在上方「備註」卡片輸入通關密碼。</p>
+        <div class="submit-bar">
+          <button type="button" id="billingSubmitBtn" class="action-btn action-primary">新增請款</button>
+        </div>
+        <div id="billingStatus" class="form-status" hidden></div>
+      </div>
+    </section>
+
     <section class="card" id="internalSection" hidden>
       <h2>內部記錄 <span class="card-badge">不會列印，僅後台查看</span></h2>
 
@@ -252,11 +270,6 @@
     </div>
   </div>
 
-  <div class="pr-remark-box">
-    <div class="pr-label-cell">備註</div>
-    <div class="pr-text-cell" id="prRemark"></div>
-  </div>
-
   <table class="pr-sign">
     <tbody>
       <tr class="pr-sign-row">
@@ -269,6 +282,6 @@
 </div>
 
 <script src="config.js?v=20260921a"></script>
-<script src="app.js?v=20260923b"></script>
+<script src="app.js?v=20261007d"></script>
 </body>
 </html>

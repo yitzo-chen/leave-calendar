@@ -118,6 +118,40 @@ var XlsxBuilder = (function () {
     return sm ? sm[1] : null;
   }
 
+  /** 範本沒有這個儲存格時建立（依列號、欄號順序插入，必要時連列一起建立）；已存在則原樣回傳 */
+  function ensureCell(xml, ref, style) {
+    if (cellRegex(ref).test(xml)) return xml;
+    var p = parseRef(ref);
+    var newCell = '<c r="' + ref + '"' + (style != null ? ' s="' + style + '"' : "") + "/>";
+    var rm = new RegExp('<row r="' + p.row + '"((?:\\s+[A-Za-z:]+="[^"]*")*)\\s*(?:/>|>([\\s\\S]*?)</row>)').exec(xml);
+    if (!rm) {
+      // 整列都沒有：插在第一個列號比它大的 <row> 之前，沒有就放在 </sheetData> 之前
+      var at = xml.indexOf("</sheetData>"), re = /<row r="(\d+)"/g, x;
+      while ((x = re.exec(xml))) {
+        if (Number(x[1]) > p.row) { at = x.index; break; }
+      }
+      return xml.slice(0, at) + '<row r="' + p.row + '">' + newCell + "</row>" + xml.slice(at);
+    }
+    var attrs = rm[1].replace(/\s+spans="[^"]*"/, ""), inner = rm[2] || "", pos = inner.length, cre = /<c r="([A-Z]+)\d+"/g, y;
+    while ((y = cre.exec(inner))) {
+      if (colToNum(y[1]) > p.col) { pos = y.index; break; }
+    }
+    var rowXml = '<row r="' + p.row + '"' + attrs + ">" + inner.slice(0, pos) + newCell + inner.slice(pos) + "</row>";
+    return xml.slice(0, rm.index) + rowXml + xml.slice(rm.index + rm[0].length);
+  }
+  /** 寫入儲存格；不存在就先建立（style 只用在新建立的儲存格，已存在的保留原樣式） */
+  function putCell(xml, ref, value, style) {
+    return setCell(ensureCell(xml, ref, style), ref, value);
+  }
+  /** 寫入公式儲存格（同時寫入計算後的快取值，不依賴開檔時重算）；保留原樣式 */
+  function setFormulaCell(xml, ref, formula, value) {
+    var m = cellRegex(ref).exec(xml);
+    if (!m) throw new Error("範本找不到儲存格 " + ref);
+    var sm = /\ss="(\d+)"/.exec(m[1]);
+    var out = '<c r="' + ref + '"' + (sm ? ' s="' + sm[1] + '"' : "") + "><f>" + escapeText(formula) + "</f><v>" + String(value) + "</v></c>";
+    return xml.slice(0, m.index) + out + xml.slice(m.index + m[0].length);
+  }
+
   // ---------- 合併儲存格 ----------
   function replaceMerges(xml, mutate) {
     var m = /<mergeCells count="\d+">([\s\S]*?)<\/mergeCells>/.exec(xml);
@@ -191,7 +225,7 @@ var XlsxBuilder = (function () {
 
   /**
    * 範本前處理（只需做一次，結果存成「已處理範本」供之後每天的分頁使用）：
-   *  1. 備註方塊 A46：向左靠齊、靠上、自動換行（框線不變）
+   *  1. （已移除）舊的備註方塊 A46 靠左上樣式；A46 現在是請款表「區域」標題，維持範本原樣
    *  2. 工種/機具/材料名稱格：字型統一成範本多數名稱格使用的字型（原本 A9、A10 等是 8pt，其餘 12pt，看起來不一致），
    *     並加上「縮小字型以符合儲存格」，名稱太長時自動縮小而不是被截斷
    *  3. 人員姓名、主任/工安、加班原因、填表人：同樣加上縮小字型以符合
@@ -231,10 +265,10 @@ var XlsxBuilder = (function () {
       apply(ref, "name" + best, { fontId: best, align: shrink.align });
     });
 
-    var shrinkRefs = refsOf("M", 34, 45).concat(refsOf("P", 34, 45), ["J34", "J37", "J40", "J43", "O53"]);
+    var shrinkRefs = refsOf("M", 34, 45).concat(refsOf("P", 34, 45), ["J34", "J37", "J40", "J43", "O53"],
+      refsOf("A", 47, 51), refsOf("C", 47, 51), refsOf("Q", 47, 51), refsOf("S", 47, 51)); // 後四組＝請款表的區域/期別/備註/發票
     shrinkRefs.forEach(function (ref) { apply(ref, "shrink", shrink); });
 
-    apply("A46", "remark", { align: { horizontal: "left", vertical: "top", wrapText: "1", shrinkToFit: null } });
     apply("J5", "date", { align: { horizontal: "right", shrinkToFit: "1", wrapText: null } });
 
     out["xl/styles.xml"] = styles;
@@ -298,14 +332,97 @@ var XlsxBuilder = (function () {
     return chosen.map(function (idx) { return list[idx]; });
   }
 
+  // ---------- 請款表（A46:S52）與備註（U 欄）----------
+  var BILLING = { firstRow: 47, cap: 5, totalRow: 52 };
+
+  /** 試算表來的金額/進度：數字照用；字串去掉千分位逗號、空白、%、「元」後轉數字；空值回傳 0；不是數字回傳 null */
+  function toNumber(v) {
+    if (typeof v === "number") return isFinite(v) ? v : null;
+    var s = String(v == null ? "" : v).replace(/[,\s%元]/g, "");
+    if (s === "") return 0;
+    var n = Number(s);
+    return isFinite(n) ? n : null;
+  }
+
+  /**
+   * 目前進度 → 比例（請款表 N 欄是 0.00% 格式）：含 % 的字串「35%」→0.35；數字 >1 視為百分點（35→0.35），
+   * ≤1 視為比例（0.35→0.35，1→100%，即試算表百分比格式欄位的原值）；空值回傳 ""；不是數字回傳 null
+   */
+  function toProgress(v) {
+    if (v === "" || v == null) return "";
+    var pct = typeof v === "string" && /%/.test(v), n = toNumber(v);
+    if (n === null) return null;
+    return (pct || n > 1) ? Math.round(n * 100) / 10000 : n;
+  }
+
+  /**
+   * 某一天分頁的請款表內容。
+   * @param rows 該案場「請款資料」全部列（試算表順序）[{date:"yyyy-mm-dd", zone, period, amount, progress, remark, invoice}]
+   * @param date 該分頁的日期；只取請款日期 ≤ 此日期的列（舊日期的分頁不受之後新增的請款資料影響）
+   * @param warnings 警告陣列
+   * @return {shown:[{zone,period,amount,prev,progress,remark,invoice}], totalAmount, totalPrev}
+   *   prev（累計至上期）＝同區域、排在它之前（請款日期較早，同日依試算表順序）的各列本期金額加總；
+   *   超過 CAP 列時只顯示最新的列，但累計仍計入被省略的列
+   */
+  function computeBilling(rows, date, warnings) {
+    var eligible = [];
+    (rows || []).forEach(function (r, i) {
+      if (r && r.date && r.date <= date) eligible.push({ r: r, i: i });
+    });
+    eligible.sort(function (a, b) {
+      return a.r.date < b.r.date ? -1 : a.r.date > b.r.date ? 1 : a.i - b.i;
+    });
+    var byZone = Object.create(null), all = eligible.map(function (e, n) {
+      var amount = toNumber(e.r.amount), progress = toProgress(e.r.progress), zone = String(e.r.zone == null ? "" : e.r.zone).trim();
+      if (amount === null) { warnings.push("請款資料「" + zone + " " + (e.r.period || "") + "」的本期請款金額不是數字，以 0 計"); amount = 0; }
+      if (progress === null) { warnings.push("請款資料「" + zone + " " + (e.r.period || "") + "」的目前進度不是數字，已略過"); progress = ""; }
+      var prev = byZone[zone] || 0;
+      byZone[zone] = round2(prev + amount);
+      return {
+        zone: zone, period: String(e.r.period == null ? "" : e.r.period).trim(), amount: round2(amount), prev: round2(prev),
+        progress: progress, remark: String(e.r.remark == null ? "" : e.r.remark), invoice: String(e.r.invoice == null ? "" : e.r.invoice),
+      };
+    });
+    var shown = all;
+    if (all.length > BILLING.cap) {
+      shown = all.slice(all.length - BILLING.cap);
+      warnings.push("請款資料共 " + all.length + " 列，超過範本 " + BILLING.cap + " 列，只顯示最新 " + BILLING.cap + " 列（請自行合併成累加金額）");
+    }
+    var totalAmount = 0, totalPrev = 0;
+    shown.forEach(function (s) { totalAmount += s.amount; totalPrev += s.prev; });
+    return { shown: shown, totalAmount: round2(totalAmount), totalPrev: round2(totalPrev) };
+  }
+
+  /**
+   * 備註累加（方案A）：到該分頁日期為止所有日期的備註，依日期排序；每一行一列、前綴民國日期（同分頁名格式），
+   * 例如「115.10.6 測量人員:…」。同一天重複日期只取最後一筆。
+   * @param remarks [{date, text}]；text 內的換行會拆成多列
+   */
+  function remarkLines(remarks, date) {
+    var byDate = Object.create(null);
+    (remarks || []).forEach(function (r) {
+      if (r && r.date && r.date <= date) byDate[r.date] = r.text;
+    });
+    var out = [];
+    Object.keys(byDate).sort().forEach(function (d) {
+      String(byDate[d] == null ? "" : byDate[d]).replace(/\r/g, "").split("\n").forEach(function (line) {
+        line = line.replace(/\s+$/, "");
+        if (line.replace(/\s/g, "") !== "") out.push(sheetNameForDate(d) + " " + line);
+      });
+    });
+    return out;
+  }
+
   function box(on) { return on ? "■" : "□"; }
 
   // ---------- 主要：由範本 sheet XML 產生某一天的 sheet XML ----------
   /**
    * @param templateSheetXml 範本分頁的 XML 字串
-   * @param data {date, basic, header, items, attendance}
+   * @param data {date, basic, header, items, attendance, billing, remarks}
    *   basic: {公司名稱, 業主, 工程名稱, "合約金額（元）", "開工日期（YYYY/MM/DD）"}
    *   header: {weather,status,todayWork,tomorrowPlan,remark,reporter,directorAm,directorPm,safetyAm,safetyPm}
+   *   billing: 該案場「請款資料」全部列 [{date,zone,period,amount,progress,remark,invoice}]（只取日期 ≤ 本日者）
+   *   remarks: 該案場各日備註 [{date,text}]（只取日期 ≤ 本日者，逐日累加寫到 U 欄）；沒給時退回只用 header.remark（當天）
    *   items: [{category:"工種"|"機具"|"材料", name, am, pm, cumulative}]（依清單順序）
    *   attendance: [{name, am, pm, amHours, pmHours, reason}]
    * @param opts 保留（目前未使用）；templateSheetXml 需先經 prepareTemplate 處理
@@ -400,20 +517,40 @@ var XlsxBuilder = (function () {
     fillCrew(ROWS.crewPm, "pm", h.directorPm, h.safetyPm);
     xml = setCell(xml, "P33", "加班原因");
 
-    // 備註方塊（A46:S52 併成一格）與填表人
-    xml = setCell(xml, "A46", "備註：" + (h.remark || ""));
+    // 請款表（A46:S52，範本已含框線與合併）：請款日期 ≤ 本日的列，最多 5 列；總合計保留公式並寫入快取值
+    var bill = computeBilling(data.billing, data.date, warnings);
+    for (var br = 0; br < BILLING.cap; br++) {
+      var brow = BILLING.firstRow + br, bl = bill.shown[br];
+      if (!bl) continue;
+      xml = setCell(xml, "A" + brow, bl.zone);
+      xml = setCell(xml, "C" + brow, bl.period);
+      xml = setCell(xml, "E" + brow, bl.amount);
+      xml = setCell(xml, "H" + brow, "元");
+      xml = setCell(xml, "I" + brow, bl.prev);
+      xml = setCell(xml, "M" + brow, "元");
+      if (bl.progress !== "") xml = setCell(xml, "N" + brow, bl.progress); // N 欄是 0.00% 格式，不另寫「%」單位
+      xml = setCell(xml, "Q" + brow, bl.remark);
+      xml = setCell(xml, "S" + brow, bl.invoice);
+    }
+    xml = setFormulaCell(xml, "E" + BILLING.totalRow, "SUM(E" + BILLING.firstRow + ":G" + (BILLING.firstRow + BILLING.cap - 1) + ")", bill.totalAmount);
+    xml = setFormulaCell(xml, "I" + BILLING.totalRow, "SUM(I" + BILLING.firstRow + ":L" + (BILLING.firstRow + BILLING.cap - 1) + ")", bill.totalPrev);
+
+    // 備註：列印範圍（A:S）之外的 U 欄，U7 為「註：」標題（範本已有），U8 起每則一列、逐日累加
+    var remarks = data.remarks || (h.remark ? [{ date: data.date, text: h.remark }] : []);
+    var remStyle = styleOfCell(xml, "U7");
+    var remLines = remarkLines(remarks, data.date);
+    for (var ri = 0; ri < remLines.length; ri++) xml = putCell(xml, "U" + (8 + ri), remLines[ri], remStyle);
+    if (remLines.length + 7 > 54) {
+      xml = xml.replace(/<dimension ref="A1:([A-Z]+)\d+"\/>/, '<dimension ref="A1:$1' + (remLines.length + 7) + '"/>');
+    }
+
     xml = setCell(xml, "O53", h.reporter || "");
 
-    // 合併儲存格：備註區併成單一方塊、日期 J5:L5、加班原因欄 P:S 逐列合併
+    // 合併儲存格：日期 J5:L5、加班原因欄 P:S 逐列合併（請款表區的合併已在範本內）
     xml = replaceMerges(xml, function (refs) {
-      var kept = refs.filter(function (ref) {
-        var r = parseRange(ref);
-        return !(r.r1 >= 46 && r.r1 <= 52 && r.c1 >= 1 && r.c2 <= 19);
-      });
-      kept.push("A46:S52");
-      kept.push("J5:L5");
-      for (var row = 33; row <= 45; row++) kept.push("P" + row + ":S" + row);
-      return kept;
+      refs.push("J5:L5");
+      for (var row = 33; row <= 45; row++) refs.push("P" + row + ":S" + row);
+      return refs;
     });
 
     // 只留單一分頁被選取（多個 tabSelected 會讓 Excel 進入「群組」編輯）
@@ -513,6 +650,11 @@ var XlsxBuilder = (function () {
     wrapLines: wrapLines,
     textUnits: textUnits,
     setCell: setCell,
+    putCell: putCell,
+    ensureCell: ensureCell,
+    computeBilling: computeBilling,
+    toProgress: toProgress,
+    remarkLines: remarkLines,
     styleOfCell: styleOfCell,
     prepareTemplate: prepareTemplate,
     computeCumulatives: computeCumulatives,
