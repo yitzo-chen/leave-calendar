@@ -66,7 +66,8 @@
     });
     let stored = "";
     try { stored = localStorage.getItem("dailyReport.caseId") || ""; } catch (err) { /* 私密瀏覽等情境略過 */ }
-    const initial = CASES.some((c) => c.code === stored) ? stored : (CASES[0] && CASES[0].code) || "";
+    const wanted = new URLSearchParams(location.search).get("case") || stored; // 從「工項完成量」頁返回時帶回案場
+    const initial = CASES.some((c) => c.code === wanted) ? wanted : (CASES[0] && CASES[0].code) || "";
     select.value = initial;
     currentCaseId = initial;
   }
@@ -520,7 +521,29 @@
       datalist.appendChild(opt);
     });
   }
+  // 主任／工安「填寫過的名字」：填入下拉清單（datalist）並顯示成可一鍵點選的名字（最近用的在前面）
+  function setNameChips(chipsId, inputId, names) {
+    const box = el(chipsId);
+    box.innerHTML = "";
+    (names || []).slice(0, 6).forEach((n) => {
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "chip"; b.textContent = n;
+      b.addEventListener("click", () => { el(inputId).value = n; });
+      box.appendChild(b);
+    });
+  }
+  async function fillLeaderLists() {
+    const result = await apiGet("leaderNames");
+    if (!result.ok) return; // 舊版後端沒有這個動作時略過，仍可手動輸入
+    [["dirNames", "dirChips", "fDir", result.directors], ["safeNames", "safeChips", "fSafe", result.safeties]].forEach(([listId, chipsId, inputId, names]) => {
+      const dl = el(listId);
+      dl.innerHTML = "";
+      (names || []).forEach((n) => { const o = document.createElement("option"); o.value = n; dl.appendChild(o); });
+      setNameChips(chipsId, inputId, names);
+    });
+  }
   async function loadReporters() {
+    await fillLeaderLists().catch(() => {}); // 名單載入失敗不影響其他下拉選單
     await fillDatalist("reporters", "reporterNames");
     await fillDatalist("peopleNames", "peopleNames");
     await fillDatalist("internalCategories", "pickCategoryList");
@@ -528,7 +551,14 @@
 
   let loadDaySeq = 0; // 快速連切日期時，只採用最後一次請求的回應
 
+  // 「工項完成量」按鈕：帶著目前的案場與日期切換到該頁
+  function syncItemsLink(date) {
+    const a = el("itemsLinkBtn");
+    if (a) a.href = "items.html?case=" + encodeURIComponent(currentCaseId) + "&date=" + encodeURIComponent(date);
+  }
+
   async function loadDay(date) {
+    syncItemsLink(date);
     const mySeq = ++loadDaySeq;
     dayLoaded = false;
     syncSubmitLock();
@@ -754,7 +784,8 @@
   document.addEventListener("DOMContentLoaded", async () => {
     const dateInput = el("fDate");
     const today = toDateInputValue(new Date());
-    dateInput.value = today;
+    const qDate = new URLSearchParams(location.search).get("date"); // 從「工項完成量」頁返回時帶回日期
+    dateInput.value = /^\d{4}-\d{2}-\d{2}$/.test(qDate || "") ? qDate : today;
 
     if (!cfg.SCRIPT_URL) {
       el("errorBanner").hidden = false;
@@ -873,6 +904,7 @@
         showSubmitResult(result.xlsx);
         el("internalSection").hidden = true; // 送出成功後自動收合，平常畫面上預設看不到，只有按 Ctrl+Alt+I 當下才會打開
         await loadDay(date);
+        fillLeaderLists().catch(() => {}); // 剛填的主任／工安名字馬上出現在選單
       } catch (err) {
         setStatus("送出失敗：" + err.message + "（若一直失敗，稍等半分鐘再試一次）", "error");
       } finally {

@@ -12,6 +12,9 @@ var SHEET_ATTENDANCE = "本工出勤";
 var SHEET_INTERNAL = "內部記錄"; // 選工/備註兩種日誌型記錄，僅後台查看，不進列印/xlsx
 var SHEET_BILLING = "請款資料"; // 使用者直接在試算表輸入；顯示在 xlsx 日報的請款表（A46:S52），欄位：案場｜請款日期｜區域｜期別｜本期請款金額｜目前進度｜備註｜發票
 var SHEET_CASES = "案場設定"; // 多案場：一案場一列，取代舊版單列的「基本資料」
+var SHEET_ITEMS = "合約工項"; // 工項完成量頁的項目主表（照日報原表 DPR 的項目與預估數量），欄位：案場｜序號｜項目名稱｜單位｜預估數量｜期初已完成｜啟用中；使用者可直接修改（綠色）
+var SHEET_DONE = "工項完成量"; // 每日完成量（只由「工項完成量」網頁寫入），欄位：日期｜序號｜本日完成量｜clientId｜更新時間｜案場
+var CASE_COL_DONE = 6;
 
 // 各資料表「案場」欄位的欄號（一律補在既有欄位最後面，比照當初新增主任/工安欄位的作法：
 // 不動既有欄位順序、舊資料不用搬移位置，只需要在最後補值）
@@ -112,6 +115,23 @@ function setupSheets() {
     billing.getRange(2, 6, 500, 1).setNumberFormat("0.00%"); // 輸入 35 或 35% 都會是 35%
   }
 
+  // 「合約工項」：工項完成量頁的項目主表。只在分頁是新建／空白時放入 DEFAULT_CASE_ID 的種子資料（日報原表 DPR 的 32 個項目），
+  // 之後項目名稱、預估數量、期初已完成、啟用中都由使用者直接在這裡改；重複執行 setupSheets 不會覆蓋已有內容。
+  var itemsMaster = ss.getSheetByName(SHEET_ITEMS) || ss.insertSheet(SHEET_ITEMS);
+  if (itemsMaster.getRange(1, 1).getValue() === "") {
+    itemsMaster.getRange(1, 1, 1, 7).setValues([["案場", "序號", "項目名稱", "單位", "預估數量", "期初已完成", "啟用中"]]);
+    var seedRows = ITEM_MASTER_SEED.map(function (r) { return [DEFAULT_CASE_ID].concat(r); });
+    itemsMaster.getRange(2, 1, seedRows.length, 7).setValues(seedRows);
+    itemsMaster.getRange(2, 1, 500, 1).setDataValidation(SpreadsheetApp.newDataValidation().requireValueInRange(cases.getRange("A2:A500"), true).build());
+    itemsMaster.getRange(2, 7, 500, 1).setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(["TRUE", "FALSE"], true).build());
+  }
+  // 「工項完成量」：每日完成量，由網頁寫入；日期欄純文字。只補表頭，不動任何既有資料。
+  var itemsDone = ss.getSheetByName(SHEET_DONE) || ss.insertSheet(SHEET_DONE);
+  if (itemsDone.getRange(1, 1).getValue() === "") {
+    itemsDone.getRange(1, 1, 1, 6).setValues([["日期", "序號", "本日完成量", "clientId", "更新時間", "案場"]]);
+  }
+  setDateColumnText(itemsDone);
+
   // 給不同使用者看的操作說明：寫在資料欄右側的 J 欄（每次 setupSheets 都會重寫成最新版，請勿在此輸入資料）
   writeSheetGuide_(cases, GUIDE_COL, CASES_GUIDE);
   writeSheetGuide_(billing, GUIDE_COL, BILLING_GUIDE);
@@ -130,9 +150,9 @@ var UPDATE_STEPS = [
 ];
 var COLOR_LEGEND = [
   "【顏色說明：哪些可以人工輸入】",
-  "🟩 綠色（分頁標籤＋表頭＋淡綠格子）＝可人工輸入/修改：「案場設定」「請款資料」，以及「工種機具材料清單」的「工項編號」「啟用中」兩欄。改完要照下面步驟按「更新」，Drive 的 xlsx 才會同步。",
+  "🟩 綠色（分頁標籤＋表頭＋淡綠格子）＝可人工輸入/修改：「案場設定」「請款資料」「合約工項」，以及「工種機具材料清單」的「工項編號」「啟用中」兩欄。改完要照下面步驟按「更新」，Drive 的 xlsx 才會同步。",
   "🟦 藍色＝「內部記錄」：可人工修改，不進列印也不進 xlsx，不需要按更新。",
-  "⬜ 灰色（分頁標籤＋表頭）＝由日報網頁寫入：「日報頭」「日報記錄」「本工出勤」，以及清單的「類別」「項目名稱」「案場」欄。請勿手動輸入；要修正請回日報網頁選該日期修改，或用選單「日報管理→刪除某天日報資料」。",
+  "⬜ 灰色（分頁標籤＋表頭）＝由日報網頁寫入：「日報頭」「日報記錄」「本工出勤」「工項完成量」，以及清單的「類別」「項目名稱」「案場」欄。請勿手動輸入；要修正請回日報網頁選該日期修改，或用選單「日報管理→刪除某天日報資料」。",
   "（每個分頁左上角 A1 的備註也有同樣說明，滑鼠移上去就會顯示。）",
 ];
 var CASES_GUIDE = [
@@ -181,6 +201,17 @@ function applyColorGuide_(ss) {
     colorHeader_(sh, 1, 8, C.inputHeader);
     sh.getRange(2, 1, 499, 8).setBackground(C.inputBody);
     sh.getRange("A1").setNote("🟩 綠色＝可人工輸入。輸入後請按選單「日報管理→更新全部日報」，Drive 的 xlsx 才會顯示（說明見 J 欄）。");
+  });
+  put(SHEET_ITEMS, function (sh) {
+    sh.setTabColor(C.tabInput);
+    colorHeader_(sh, 1, 7, C.inputHeader);
+    sh.getRange(2, 1, 499, 7).setBackground(C.inputBody);
+    sh.getRange("A1").setNote("🟩 綠色＝可人工修改（項目名稱、單位、預估數量、期初已完成、啟用中）。序號是對應每日完成量的鍵，建立後請勿更改；不用的項目把「啟用中」改成 FALSE，不要刪列。網頁重新整理後生效，Drive 的 xlsx 在下次送出工項完成量時更新。");
+  });
+  put(SHEET_DONE, function (sh) {
+    sh.setTabColor(C.tabSys);
+    colorHeader_(sh, 1, 6, C.sysHeader);
+    sh.getRange("A1").setNote("⬜ 由日報網頁「工項完成量」頁寫入，請勿手動輸入。要修正請回該頁選日期修改。");
   });
   put(SHEET_LIST, function (sh) {
     sh.setTabColor(C.tabInput);
@@ -286,6 +317,43 @@ var SEED_ITEMS = [
   ["材料", "砂(m³)", "", "TRUE"],
   ["材料", "水泥(包)", "", "TRUE"],
   ["材料", "黏著劑(包)", "", "TRUE"],
+];
+
+// 「合約工項」種子資料：日報原表（Talin Project DPR…清理版2.xlsx 的 1106 分頁）第 11～42 列，欄位 [序號, 項目名稱, 單位, 預估數量, 期初已完成, 啟用中]。
+// 預估數量＝目前合約總量，工項完成量累計超過時網頁只提醒、不擋送出。
+var ITEM_MASTER_SEED = [
+  [1, "樁頭及錨定處理", "PC", 325, 0, "TRUE"],
+  [2, "深井排水", "PT", 26, 0, "TRUE"],
+  [3, "擋土壁,鋼板樁支撐", "m2", 3057, 0, "TRUE"],
+  [4, "擋土壁, 鋼鈑樁,樁長 = 10m", "m", 395, 0, "TRUE"],
+  [5, "開挖", "m3", 14183, 0, "TRUE"],
+  [6, "回填及夯實, 使用原土", "m3", 3685, 0, "TRUE"],
+  [7, "棄土, 殘土", "m3", 1263, 0, "TRUE"],
+  [8, "無筋混凝土, II型140kgf/cm2", "m3", 151, 0, "TRUE"],
+  [9, "結構混凝土, II型280kgf/cm2", "m3", 7844, 0, "TRUE"],
+  [10, "普通模板, 支撐高H < 7M", "m2", 20554, 0, "TRUE"],
+  [11, "清水模板, 支撐高H < 7M", "m2", 5854, 0, "TRUE"],
+  [12, "清水模板, 支撐高H ≧ 7M", "m2", 360, 0, "TRUE"],
+  [13, "竹節鋼筋y=4200kgf/cm2", "ton", 1614, 0, "TRUE"],
+  [14, "鋼筋續接器, SA級, D25", "set", 3108, 0, "TRUE"],
+  [15, "鋼筋續接器, SA級, D32", "set", 90, 0, "TRUE"],
+  [16, "預埋式錨栓, 碳鋼, 熱浸鍍鋅", "kg", 64, 0, "TRUE"],
+  [17, "預埋鐵件, 鍍鋅", "kg", 3040, 0, "TRUE"],
+  [18, "預埋、套管, 鍍鋅鋼管含法蘭", "kg", 152, 0, "TRUE"],
+  [19, "預埋、套管, 不銹鋼管含法蘭", "kg", 152, 0, "TRUE"],
+  [20, "預埋、套管, PVC管含法蘭", "m", 5, 0, "TRUE"],
+  [21, "預埋、套管, 鍍鋅鋼管不含法蘭", "kg", 152, 0, "TRUE"],
+  [22, "預埋、套管, 不銹鋼管不含法蘭", "kg", 152, 0, "TRUE"],
+  [23, "預埋、套管, PVC管不含法蘭", "m", 4, 0, "TRUE"],
+  [24, "預埋鐵件, 不銹鋼 SUS 304", "kg", 720, 0, "TRUE"],
+  [25, "鋼構.重型型(60~150kg/m),SN490B鍍鋅油漆", "ton", 5, 0, "TRUE"],
+  [26, "扶手, 鋼管, 不銹鋼(供料及預製), 油漆", "ton", 3, 0, "TRUE"],
+  [27, "樓梯踏步, 供料及預製, 鍍鋅鐵格柵", "ton", 1, 0, "TRUE"],
+  [28, "鋼構安裝, 重型型鋼(60~150 kg/m)", "ton", 5, 0, "TRUE"],
+  [29, "樓梯踏步,安裝,鍍鋅鐵格柵", "ton", 1, 0, "TRUE"],
+  [30, "50mm厚底版鋪保麗龍保護板", "m2", 3258, 0, "TRUE"],
+  [31, "2.5mm厚底版舖自黏式改質瀝青防水毯", "m2", 2061, 0, "TRUE"],
+  [32, "2.5mm厚牆面舖自黏式改質瀝青防水毯", "m2", 1197, 0, "TRUE"],
 ];
 
 // ---------- 密碼錯誤鎖定（跟休假月曆同一套邏輯） ----------
@@ -464,7 +532,7 @@ function doPost(e) {
     var action = data.action || "submit";
     var pwCheck = verifyPassword(String(data.password || ""));
     if (!pwCheck.ok) return respond(pwCheck);
-    if (action !== "submit" && action !== "addItem" && action !== "addCase" && action !== "addBilling") return respond({ ok: false, error: "不支援的操作" });
+    if (action !== "submit" && action !== "addItem" && action !== "addCase" && action !== "addBilling" && action !== "saveWorkItems") return respond({ ok: false, error: "不支援的操作" });
 
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     if (firstMissingSheet(ss, [SHEET_CASES])) return respond({ ok: false, error: NOT_SETUP_ERROR });
@@ -594,6 +662,71 @@ function doPost(e) {
         bxlsx = /沒有任何日期可寫入/.test(String(bxerr)) ? { ok: true, skipped: true, warnings: [] } : { ok: false, error: String(bxerr) };
       }
       return respond({ ok: true, added: bNew.length, xlsx: bxlsx });
+    }
+
+    // ---- 送出／更新當天的工項完成量（「工項完成量」網頁）----
+    // 只動這一天、被明確列出的序號：items＝要寫入的 [{seq, qty}]（qty 為 0 視為沒有）、clearItems＝使用者明確清空的序號；
+    // 沒被列出的既有資料一律不動（舊頁面或兩人分填時不會互相蓋掉）。完全不碰日報頭／日報記錄等日報資料。
+    // 寫完後只更新 xlsx 的「工項.xxx」分頁（xlsxUpdateItems_ 不重寫、不移除任何日報分頁）；xlsx 失敗不影響已寫入的資料。
+    if (action === "saveWorkItems") {
+      if (firstMissingSheet(ss, [SHEET_ITEMS, SHEET_DONE])) return respond({ ok: false, error: "尚未建立「合約工項」「工項完成量」分頁，請先執行 setupSheets" });
+      var wsDate = checkText(data.date, "日期", 20, true);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(wsDate) || parseAdminDate(wsDate) !== wsDate) return respond({ ok: false, error: "日期格式錯誤" });
+      var wsClientId = sanitizeCell(checkText(data.clientId, "clientId", MAX_SHORT_TEXT, true));
+      var wsIn = Array.isArray(data.items) ? data.items : [];
+      var wsClear = Array.isArray(data.clearItems) ? data.clearItems : [];
+      if (wsIn.length > 200 || wsClear.length > 200) return respond({ ok: false, error: "一次送出的項目過多" });
+      var wsMaster = {};
+      xlsxLoadItems_(ss, caseId).master.forEach(function (m) { wsMaster[m.seq] = m; });
+
+      // 先全部驗證，任何不合法就整個拒絕、不寫入
+      var wsWrites = [], wsDeletes = [], wsSeen = {};
+      for (var wi2 = 0; wi2 < wsIn.length; wi2++) {
+        var wit = wsIn[wi2];
+        if (!wit || typeof wit !== "object" || Array.isArray(wit)) throw validationError("第 " + (wi2 + 1) + " 筆工項資料格式錯誤");
+        var wSeq = Number(wit.seq);
+        if (!isFinite(wSeq) || Math.floor(wSeq) !== wSeq || !wsMaster[wSeq]) throw validationError("第 " + (wi2 + 1) + " 筆的工項序號不在「合約工項」內");
+        if (wsSeen[wSeq]) throw validationError("工項序號 " + wSeq + " 重複");
+        wsSeen[wSeq] = true;
+        var wQty = checkQty(wit.qty, "工項 " + wSeq + " 的完成量");
+        if (wQty > 1e9) throw validationError("工項 " + wSeq + " 的完成量超出合理範圍");
+        wQty = Math.round(wQty * 100) / 100;
+        if (wQty > 0) wsWrites.push({ seq: wSeq, qty: wQty }); else wsDeletes.push(wSeq);
+      }
+      for (var wc = 0; wc < wsClear.length; wc++) {
+        var wcSeq = Number(wsClear[wc]);
+        if (!isFinite(wcSeq) || Math.floor(wcSeq) !== wcSeq || !wsMaster[wcSeq]) throw validationError("要清除的工項序號不在「合約工項」內");
+        if (wsSeen[wcSeq] && wsWrites.some(function (x) { return x.seq === wcSeq; })) throw validationError("工項序號 " + wcSeq + " 同時要寫入與清除");
+        if (wsDeletes.indexOf(wcSeq) === -1) wsDeletes.push(wcSeq);
+      }
+
+      var wsSheet = ss.getSheetByName(SHEET_DONE), wsNow = new Date();
+      function wsFindRow(seq) {
+        return findRow_(wsSheet, CASE_COL_DONE, function (r) {
+          return normalizeDate(r[0]) === wsDate && Number(r[1]) === seq && String(r[CASE_COL_DONE - 1] || "").trim() === caseId;
+        });
+      }
+      wsWrites.forEach(function (w) {
+        var vals = [wsDate, w.seq, w.qty, wsClientId, wsNow, caseId];
+        var row = wsFindRow(w.seq);
+        if (row === -1) row = wsSheet.getLastRow() + 1;
+        ensureRows(wsSheet, row);
+        wsSheet.getRange(row, 1, 1, vals.length).setValues([vals]);
+      });
+      var wsDeleted = 0;
+      wsDeletes.forEach(function (seq) {
+        var row = wsFindRow(seq);
+        if (row !== -1) { wsSheet.deleteRow(row); wsDeleted++; }
+      });
+
+      var wsx;
+      try {
+        var wxr = xlsxUpdateItems_(caseId, caseInfo);
+        wsx = { ok: true, url: wxr.url || "", skipped: !!wxr.skipped, warnings: wxr.warnings || [] };
+      } catch (wxerr) {
+        wsx = { ok: false, error: String(wxerr) };
+      }
+      return respond({ ok: true, date: wsDate, saved: wsWrites.length, cleared: wsDeleted, xlsx: wsx });
     }
 
     // ---- 送出／更新當天日報（原本邏輯） ----
@@ -784,6 +917,8 @@ function doGet(e) {
     peopleNames: [SHEET_ATTENDANCE, SHEET_CASES],
     internalCategories: [SHEET_INTERNAL, SHEET_CASES],
     xlsxUrl: [SHEET_CASES],
+    workItems: [SHEET_ITEMS, SHEET_DONE, SHEET_CASES],
+    leaderNames: [SHEET_HEADER, SHEET_CASES],
   };
   if (Object.prototype.hasOwnProperty.call(neededSheets, action) && firstMissingSheet(ss, neededSheets[action])) {
     return respond({ ok: false, error: NOT_SETUP_ERROR });
@@ -792,7 +927,7 @@ function doGet(e) {
   // 除了「cases」（列出可選案場，本身不需要指定案場）與尚未列出的 action，其餘一律要求合法的案場
   var caseId = String(e.parameter.caseId || "").trim();
   var caseInfo = null;
-  var CASE_REQUIRED = ["config", "day", "cumulative", "reporters", "peopleNames", "internalCategories", "xlsxUrl"];
+  var CASE_REQUIRED = ["config", "day", "cumulative", "reporters", "peopleNames", "internalCategories", "xlsxUrl", "workItems", "leaderNames"];
   if (CASE_REQUIRED.indexOf(action) !== -1) {
     caseInfo = getCaseRow_(ss, caseId);
     if (!caseInfo) return respond({ ok: false, error: "案場不存在或已停用" });
@@ -938,6 +1073,46 @@ function doGet(e) {
       });
     }
     return respond({ ok: true, names: categories });
+  }
+
+  // 主任／工安「填寫過的名字」清單（上午、下午欄合併、不重複），依最近一次出現的日期由新到舊排列，給網頁的下拉選單用
+  if (action === "leaderNames") {
+    var leaderSheet = ss.getSheetByName(SHEET_HEADER);
+    var leaderLast = leaderSheet.getLastRow();
+    var dirLatest = Object.create(null), safeLatest = Object.create(null);
+    if (leaderLast >= 2) {
+      leaderSheet.getRange(2, 1, leaderLast - 1, CASE_COL_HEADER).getValues().forEach(function (r) {
+        if (String(r[CASE_COL_HEADER - 1] || "").trim() !== caseId) return;
+        var ld = normalizeDate(r[0]);
+        [[9, dirLatest], [10, dirLatest], [11, safeLatest], [12, safeLatest]].forEach(function (p) {
+          var n = unsanitizeCell(r[p[0]]).trim();
+          if (n && (!(n in p[1]) || ld > p[1][n])) p[1][n] = ld;
+        });
+      });
+    }
+    var newestFirst = function (m) { return Object.keys(m).sort(function (a, b) { return m[a] < m[b] ? 1 : m[a] > m[b] ? -1 : 0; }); };
+    return respond({ ok: true, directors: newestFirst(dirLatest), safeties: newestFirst(safeLatest) });
+  }
+
+  // 工項完成量頁讀取：項目主表（啟用中，或該日已有資料的停用項目）＋ 該日已存的完成量 ＋ 到前一天為止的累計（期初已完成＋之前各日加總）
+  if (action === "workItems") {
+    var wDate = String(e.parameter.date || "").trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(wDate)) return respond({ ok: false, error: "日期格式錯誤" });
+    var wi = xlsxLoadItems_(ss, caseId);
+    var wPrior = {}, wValues = {};
+    wi.master.forEach(function (m) { wPrior[m.seq] = m.opening; });
+    Object.keys(wi.byDate).forEach(function (d) {
+      Object.keys(wi.byDate[d]).forEach(function (sq) {
+        if (!(sq in wPrior)) return; // 不在主表的序號（主表被改掉）略過
+        if (d < wDate) wPrior[sq] += wi.byDate[d][sq];
+        else if (d === wDate) wValues[sq] = wi.byDate[d][sq];
+      });
+    });
+    Object.keys(wPrior).forEach(function (sq) { wPrior[sq] = Math.round(wPrior[sq] * 100) / 100; });
+    var wItems = wi.master
+      .filter(function (m) { return m.active || (m.seq in wValues); })
+      .map(function (m) { return { seq: m.seq, name: m.name, unit: m.unit, qty: m.qty }; });
+    return respond({ ok: true, items: wItems, prior: wPrior, values: wValues });
   }
 
   // 目前該案場 xlsx 輸出檔的網址；檔案還沒產生（尚未送出過日報）時 url 為空字串

@@ -60,6 +60,7 @@ function makeGlueEnv(opts) {
       getBlob: () => new Blob(f.bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", f.name), getSize: () => f.bytes.length,
       getUrl: () => "https://drive.google.com/file/d/" + id, _f: f,
       getParents: () => ({ hasNext: () => false }),
+      makeCopy: (n) => mkFile(n, f.bytes),
     };
   }
   const folder = {
@@ -72,6 +73,7 @@ function makeGlueEnv(opts) {
   mkFile.wrap = (f) => ({
     getId: () => f.id, getName: () => f.name, isTrashed: () => f.trashed, setTrashed: (t) => { f.trashed = t; },
     getBlob: () => new Blob(f.bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", f.name), getSize: () => f.bytes.length, getUrl: () => "https://drive.google.com/file/d/" + f.id,
+    makeCopy: (n) => mkFile(n, f.bytes),
   });
   for (const [name, bytes] of Object.entries(opts.driveFiles || {})) mkFile(name, bytes);
 

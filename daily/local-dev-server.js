@@ -43,8 +43,12 @@ function sheet(n) {
         setValues(vs) { if (r + nr - 1 > (n in maxRows ? maxRows[n] : 1000)) throw new Error("範圍超出分頁大小"); for (let i = 0; i < nr; i++) { while (data[n].length < r + i) data[n].push([]); for (let j = 0; j < nc; j++) data[n][r - 1 + i][c - 1 + j] = vs[i][j]; } },
         setDataValidation() { return this; },
         setNumberFormat() { return this; },
+        // 後來新增的顏色標示／說明文字用到的格式設定：本機模擬不需要真的套用
+        setBackground() { return this; }, setFontWeight() { return this; }, setNote() { return this; },
+        setWrap() { return this; }, setVerticalAlignment() { return this; },
       };
     },
+    setTabColor() {}, setColumnWidth() {}, getLastColumn: () => Math.max(1, ...data[n].map((r) => r.length)),
     deleteRow: (r) => { data[n].splice(r - 1, 1); },
     appendRow: (arr) => { data[n].push(arr.slice()); },
   };
@@ -55,7 +59,7 @@ env.ctx.SpreadsheetApp = {
     getSheetByName: (n) => (data[n] ? sheet(n) : null),
     insertSheet: (n) => { data[n] = []; return sheet(n); },
   }),
-  newDataValidation: () => ({ requireValueInList: () => ({ build: () => ({}) }) }),
+  newDataValidation: () => ({ requireValueInList: () => ({ build: () => ({}) }), requireValueInRange: () => ({ build: () => ({}) }) }),
 };
 env.ctx.LockService = { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) };
 env.ctx.CacheService = { getScriptCache: () => ({ get: (k) => (k in cache ? cache[k] : null), put: (k, v) => { cache[k] = v; }, remove: (k) => { delete cache[k]; } }) };
@@ -75,6 +79,14 @@ http.createServer((req, res) => {
     // 純本機除錯用：把目前整份「假試算表」的所有分頁內容印出來，不是正式 doGet 的一部分
     res.setHeader("Content-Type", "application/json; charset=utf-8");
     res.end(JSON.stringify(data, null, 1));
+    return;
+  }
+  if (req.method === "GET" && url.pathname === "/__xlsx") {
+    // 純本機除錯用：下載目前假 Drive 裡的 xlsx 輸出檔（施工日報彙整_*.xlsx），方便用 Excel 實際開啟檢查
+    const f = Object.values(env.state.files).find((x) => /^施工日報彙整_/.test(x.name) && !x.trashed);
+    if (!f) { res.writeHead(404); res.end("no xlsx"); return; }
+    res.setHeader("Content-Type", "application/octet-stream");
+    res.end(f.bytes);
     return;
   }
   if (req.method === "GET") {

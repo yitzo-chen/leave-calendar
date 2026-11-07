@@ -176,7 +176,60 @@ function xlsxLoadDb_(caseId, caseInfo) {
   }
 
   db.cumByDate = XlsxBuilder.computeCumulatives(db.records, db.categoryByName, db.warnings);
+  db.items = xlsxLoadItems_(ss, caseId);
   return db;
+}
+
+/**
+ * 工項完成量資料（「合約工項」主表＋「工項完成量」每日表，皆依案場過濾）。分頁不存在＝尚未啟用此功能，回傳空資料。
+ * @return {master:[{seq,name,unit,qty,opening,active}], byDate:{日期:{序號:本日量}}}
+ */
+function xlsxLoadItems_(ss, caseId) {
+  var out = { master: [], byDate: {} };
+  var m = ss.getSheetByName(SHEET_ITEMS), d = ss.getSheetByName(SHEET_DONE);
+  if (!m) return out;
+  var mv = m.getDataRange().getValues();
+  mv.shift();
+  mv.forEach(function (r) {
+    if (String(r[0] || "").trim() !== caseId) return;
+    var seq = Number(r[1]);
+    if (!isFinite(seq) || seq <= 0) return;
+    out.master.push({ seq: seq, name: unsanitizeCell(r[2]).trim(), unit: unsanitizeCell(r[3]).trim(), qty: Number(r[4]) || 0, opening: Number(r[5]) || 0, active: String(r[6]).trim().toUpperCase() === "TRUE" });
+  });
+  out.master.sort(function (a, b) { return a.seq - b.seq; });
+  if (!d) return out;
+  var dv = d.getDataRange().getValues();
+  dv.shift();
+  dv.forEach(function (r) {
+    if (String(r[CASE_COL_DONE - 1] || "").trim() !== caseId) return;
+    var date = normalizeDate(r[0]), seq = Number(r[1]), q = Number(r[2]);
+    if (!date || !isFinite(seq) || !isFinite(q)) return;
+    (out.byDate[date] = out.byDate[date] || {})[seq] = q;
+  });
+  return out;
+}
+
+/** 依工項資料產生每個有資料的日期一張「工項.民國.月.日」分頁（前日完成＝期初＋之前各日加總）；沒有任何資料回傳 [] */
+function xlsxItemSheets_(items, tsheet, caseInfo) {
+  var dates = Object.keys(items.byDate).sort();
+  if (!dates.length || !items.master.length) return [];
+  function sty(ref) { try { return XlsxBuilder.styleOfCell(tsheet, ref); } catch (e) { return null; } }
+  var st = { title: sty("A5"), note: sty("A3"), header: sty("D7"), body: sty("D8"), left: sty("A14") }; // 借用範本既有儲存格的樣式編號（不改樣式表）
+  var running = {};
+  items.master.forEach(function (m) { running[m.seq] = m.opening; });
+  var out = [];
+  dates.forEach(function (d) {
+    var today = items.byDate[d], rows = [];
+    items.master.forEach(function (m) {
+      var t = today[m.seq] || 0, prev = running[m.seq] || 0;
+      if (!m.active && !t && !prev) return; // 已停用且與這天無關的項目不列出
+      rows.push({ seq: m.seq, name: m.name, unit: m.unit, qty: m.qty, prev: prev, today: t, cum: prev + t });
+    });
+    items.master.forEach(function (m) { running[m.seq] = (running[m.seq] || 0) + (today[m.seq] || 0); });
+    var r = XlsxBuilder.buildItemsSheet(st, { date: d, projectName: caseInfo && caseInfo.name, items: rows });
+    out.push({ name: XlsxBuilder.itemsSheetNameForDate(d), xml: r.xml });
+  });
+  return out;
 }
 
 /** 請款日期：Date 物件、2026-10-05、2026/10/5、民國 115.10.5 都接受；無法辨識回傳 "" */
@@ -251,6 +304,10 @@ function xlsxRun_(date, caseId, caseInfo) {
     rebuilt++;
   });
 
+  // 「工項.xxx」分頁一律由資料庫重新產生（既有的先移除再放新的）：這樣全量重建時工項分頁也不會消失
+  Object.keys(byName).forEach(function (k) { if (XlsxBuilder.isItemsSheetName(k)) delete byName[k]; });
+  xlsxItemSheets_(db.items, tsheet, caseInfo).forEach(function (s) { byName[s.name] = s; });
+
   var sheets = Object.keys(byName).map(function (k) { return byName[k]; });
   if (!sheets.length) {
     // 最後一個分頁也被移除、整份 xlsx 已沒有內容：把檔案丟垃圾桶（可還原），下次送出日報時會用範本重建
@@ -269,6 +326,56 @@ function xlsxRun_(date, caseId, caseInfo) {
 }
 
 function xlsxUpdateForDate(date, caseId, caseInfo) { return xlsxRun_(date, caseId, caseInfo); }
+
+/** 第一次改動既有 xlsx（加入工項分頁）之前，先在同資料夾留一份備份（每個案場只做一次），出問題可直接還原；備份失敗不阻擋主流程 */
+function xlsxBackupOnce_(file, caseId, caseInfo) {
+  var props = PropertiesService.getScriptProperties(), key = "XLSX_ITEMS_BACKUP_" + caseId;
+  if (props.getProperty(key)) return;
+  try {
+    var copy = file.makeCopy(xlsxOutputName_(caseId, caseInfo).replace(/\.xlsx$/, "") + "_工項功能上線前備份.xlsx");
+    props.setProperty(key, copy.getId());
+  } catch (e) { /* 備份失敗（例如權限）不阻擋；日報分頁仍受「安全檢查」保護 */ }
+}
+
+/**
+ * 只更新「工項.xxx」分頁（送出工項完成量時用）：讀出既有 xlsx，原樣保留所有日報分頁，只替換工項分頁後再存回。
+ * 絕不重寫、移除任何日報分頁；組檔後若發現日報分頁少了任何一張，直接中止、不寫入。
+ * 範本樣式與雲端檔不同（範本改版）時不處理，避免用不相容的樣式覆蓋既有檔案。
+ * 檔案還不存在（尚未送出過日報）時，會建立只含工項分頁的檔案，之後送出日報會接續使用同一個檔案。
+ * @return {ok, fileId, url, sheets, itemSheets, warnings} 或 {ok:true, skipped:true}（沒有任何可寫入的內容）
+ */
+function xlsxUpdateItems_(caseId, caseInfo) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var items = xlsxLoadItems_(ss, caseId);
+  var template = xlsxLoadTemplate_();
+  var tsheet = template["xl/worksheets/sheet1.xml"];
+  var file = xlsxFindOutput_(caseId, caseInfo);
+  var existing = [];
+  if (file) {
+    var oldParts = xlsxUnzip_(file.getBlob());
+    if (oldParts["xl/styles.xml"] !== template["xl/styles.xml"]) {
+      throw new Error("範本已改版，雲端 xlsx 的樣式與目前範本不同，為避免覆蓋既有日報分頁已中止；請先按試算表選單「日報管理→更新全部日報」重建後再試（工項資料已存入試算表，不會遺失）");
+    }
+    existing = XlsxBuilder.readSheets(oldParts);
+    xlsxBackupOnce_(file, caseId, caseInfo);
+  }
+  var kept = existing.filter(function (s) { return !XlsxBuilder.isItemsSheetName(s.name); });
+  var itemSheets = xlsxItemSheets_(items, tsheet, caseInfo);
+  var sheets = kept.concat(itemSheets);
+  if (!sheets.length) return { ok: true, skipped: true, sheets: 0, itemSheets: 0, warnings: [] };
+  var active = null;
+  kept.forEach(function (s) { // 開檔時停在最新的日報分頁，而不是最後一張工項分頁
+    var d = XlsxBuilder.dateForSheetName(s.name);
+    if (d && (!active || d > active.d)) active = { d: d, name: s.name };
+  });
+  var parts = XlsxBuilder.assembleWorkbook(template, sheets, active ? active.name : null);
+  var after = XlsxBuilder.readSheets(parts).map(function (s) { return s.name; });
+  kept.forEach(function (s) {
+    if (after.indexOf(s.name) === -1) throw new Error("安全檢查失敗：分頁「" + s.name + "」在組檔後遺失，已中止，未寫入雲端檔案");
+  });
+  var saved = xlsxSave_(xlsxZip_(parts, xlsxOutputName_(caseId, caseInfo)), caseId, caseInfo);
+  return { ok: true, fileId: saved.getId(), url: saved.getUrl(), sheets: sheets.length, itemSheets: itemSheets.length, warnings: [] };
+}
 
 /** 該案場目前的 xlsx 內有沒有該日期的分頁（後台管理「刪除某天資料」用來判斷 xlsx 是否要處理） */
 function xlsxHasSheetForDate(date, caseId, caseInfo) {

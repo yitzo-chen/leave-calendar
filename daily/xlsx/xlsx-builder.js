@@ -643,8 +643,72 @@ var XlsxBuilder = (function () {
     return out;
   }
 
+  // ---------- 工項完成量分頁（供文書人員對照填入 DPR 清理版；一天一頁，分頁名「工項.115.11.07」）----------
+  // 月、日補 0：assembleWorkbook 依分頁名排序，補 0 後字串排序就是日期順序，且不會被 dateForSheetName 誤認成日報分頁。
+  var ITEMS_SHEET_PREFIX = "工項.";
+  function itemsSheetNameForDate(date) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+    if (!m) throw new Error("日期格式錯誤：" + date);
+    return ITEMS_SHEET_PREFIX + (Number(m[1]) - 1911) + "." + m[2] + "." + m[3];
+  }
+  function isItemsSheetName(name) { return String(name).indexOf(ITEMS_SHEET_PREFIX) === 0; }
+
+  /**
+   * 產生一天的「工項完成量」分頁 XML（不依賴範本的分頁內容，只借用範本的樣式編號）。
+   * @param st {title, note, header, body, left} 樣式編號（從範本既有儲存格取得）
+   * @param data {date, projectName, items:[{seq, name, unit, qty, prev, today, cum}]}
+   *   欄位對應 DPR 清理版：預估數量(L)、前日完成(S)、本日完成(N)、累計(O)
+   */
+  function buildItemsSheet(st, data) {
+    var cols = [7, 54, 8, 13, 13, 13, 13, 22];
+    var labels = ["序號", "項目", "單位", "預估數量", "前日完成", "本日完成", "累計", "備註"];
+    var letters = ["A", "B", "C", "D", "E", "F", "G", "H"];
+    function sa(s) { return s !== null && s !== undefined ? ' s="' + s + '"' : ""; }
+    function tcell(ref, text, s) {
+      if (text === "" || text === null || text === undefined) return '<c r="' + ref + '"' + sa(s) + "/>";
+      return '<c r="' + ref + '"' + sa(s) + ' t="inlineStr"><is><t xml:space="preserve">' + escapeText(text) + "</t></is></c>";
+    }
+    function ncell(ref, n, s) {
+      if (n === "" || n === null || n === undefined) return '<c r="' + ref + '"' + sa(s) + "/>";
+      if (!isFinite(n)) throw new Error("非有限數字：" + ref);
+      return '<c r="' + ref + '"' + sa(s) + "><v>" + String(round2(n)) + "</v></c>";
+    }
+    function nz(n) { return n ? n : ""; } // 0 不顯示，版面比較乾淨
+    var rows = [];
+    rows.push('<row r="1" ht="22" customHeight="1">' + tcell("A1", "工項完成量　日期：" + sheetNameForDate(data.date) + "（供填入 DPR 清理版）", st.title) + "</row>");
+    if (data.projectName) rows.push('<row r="2">' + tcell("A2", "工程名稱：" + data.projectName, st.note) + "</row>");
+    var hdr = "";
+    for (var c = 0; c < 8; c++) hdr += tcell(letters[c] + "4", labels[c], st.header);
+    rows.push('<row r="4" ht="22" customHeight="1">' + hdr + "</row>");
+    var warnings = [];
+    (data.items || []).forEach(function (it, i) {
+      var r = 5 + i, over = it.qty > 0 && it.cum > it.qty + 1e-9;
+      rows.push('<row r="' + r + '" ht="20" customHeight="1">' +
+        ncell("A" + r, it.seq, st.body) + tcell("B" + r, it.name, st.left) + tcell("C" + r, it.unit, st.body) +
+        ncell("D" + r, it.qty, st.body) + ncell("E" + r, nz(it.prev), st.body) + ncell("F" + r, nz(it.today), st.body) + ncell("G" + r, nz(it.cum), st.body) +
+        tcell("H" + r, over ? "超出預估 +" + round2(it.cum - it.qty) : "", st.left) + "</row>");
+      if (over) warnings.push("工項 " + it.seq + " 累計超出預估數量");
+    });
+    var last = 4 + (data.items || []).length;
+    var notes = ["說明：前日完成＝期初已完成＋之前各日加總；累計＝前日完成＋本日完成。預估數量為目前合約總量，超過只提醒。",
+      "資料來源：日報網頁「工項完成量」頁；本分頁由系統自動產生，請勿手動修改（下次更新會被覆蓋）。"];
+    notes.forEach(function (t, k) { rows.push('<row r="' + (last + 2 + k) + '">' + tcell("A" + (last + 2 + k), t, st.note) + "</row>"); });
+    var colsXml = "";
+    for (var k = 0; k < 8; k++) colsXml += '<col min="' + (k + 1) + '" max="' + (k + 1) + '" width="' + cols[k] + '" customWidth="1"/>';
+    var xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+      '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+      '<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr><dimension ref="A1:H' + (last + 3) + '"/>' +
+      '<sheetViews><sheetView workbookViewId="0"><pane ySplit="4" topLeftCell="A5" activePane="bottomLeft" state="frozen"/><selection pane="bottomLeft" activeCell="A5" sqref="A5"/></sheetView></sheetViews>' +
+      '<sheetFormatPr defaultRowHeight="16.5"/><cols>' + colsXml + "</cols><sheetData>" + rows.join("") + "</sheetData>" +
+      '<pageMargins left="0.4" right="0.4" top="0.5" bottom="0.5" header="0.3" footer="0.3"/><pageSetup paperSize="9" orientation="portrait" fitToHeight="1"/></worksheet>';
+    return { xml: xml, warnings: warnings };
+  }
+
   return {
     CAP: CAP,
+    itemsSheetNameForDate: itemsSheetNameForDate,
+    isItemsSheetName: isItemsSheetName,
+    buildItemsSheet: buildItemsSheet,
     sheetNameForDate: sheetNameForDate,
     dateForSheetName: dateForSheetName,
     wrapLines: wrapLines,

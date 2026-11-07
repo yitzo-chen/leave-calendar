@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>工項完成量</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23C8630A'/%3E%3Ctext x='50' y='68' font-size='50' text-anchor='middle' fill='white' font-family='Arial'%3E工%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css?v=20261107f">
+<link rel="stylesheet" href="items.css?v=20261107f">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true">工</span>
+    <div>
+      <h1 id="companyName">工項完成量</h1>
+      <p class="subtitle" id="projectName">照日報原表（DPR）的項目，填每天實際施作量</p>
+    </div>
+  </div>
+  <a class="home-link" id="backLink" href="index.html">‹ 回日報</a>
+</header>
+
+<div id="errorBanner" class="banner banner-error" hidden></div>
+
+<main>
+  <div class="case-bar">
+    <label>案場</label><span id="caseName" class="pill">讀取中…</span>
+    <span id="caseLoadStatus" class="load-status"></span>
+  </div>
+
+  <div class="date-bar">
+    <button type="button" id="prev" class="icon-btn" aria-label="前一天">‹</button>
+    <input type="date" id="fDate">
+    <button type="button" id="next" class="icon-btn" aria-label="後一天">›</button>
+    <button type="button" id="today" class="ghost-btn">回到今天</button>
+    <button type="button" id="openXlsxBtn" class="ghost-btn">📄 開啟日報彙整</button>
+    <span id="dirty" class="dirty" hidden>● 尚未送出</span>
+    <span id="loadStatus" class="load-status"></span>
+  </div>
+  <p class="field-hint">切換日期會載入該天已送出的資料，可直接修改後重新送出（只會更新有列出的項目）。送出後，雲端「施工日報彙整」會多一頁「工項.民國.月.日」，文書人員可對照填入 DPR 清理版。</p>
+
+  <section class="card">
+    <h2>本日工項完成量 <span class="badge">預估數量＝目前合約總量，超過只提醒</span></h2>
+    <div class="summary-bar" id="summary"></div>
+    <div class="tools">
+      <input type="search" id="q" placeholder="搜尋項目，例如 開挖、鋼筋、模板" aria-label="搜尋項目">
+      <button type="button" id="openAll" class="ghost-btn">全部展開</button>
+      <button type="button" id="closeAll" class="ghost-btn">全部收合</button>
+    </div>
+    <div id="groups"></div>
+    <div id="msgEmpty" class="hint" hidden>沒有符合的項目。</div>
+    <p class="hint">每列的「🧮 換算」可用車次、支數、工天×產能、澆置區塊等方式算出數量再帶入；換算用的每車容量、區塊表修改只記在這個瀏覽器，不影響送出的資料。</p>
+  </section>
+
+  <section class="card">
+    <h2>自動產生「本日施工項目」</h2>
+    <p class="hint">依上方填的量產生，可複製貼到日報的「本日施工項目」。</p>
+    <textarea class="gen" id="gen" readonly placeholder="填了本日完成量後，這裡會自動出現施工項目文字。"></textarea>
+    <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
+      <button type="button" id="copyBtn" class="ghost-btn">複製文字</button>
+      <span id="copyMsg" class="hint" style="margin:0"></span>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>送出</h2>
+    <label>通關密碼
+      <input id="fPassword" type="password" autocomplete="off" placeholder="向管理者索取">
+    </label>
+    <p id="pwHint" class="field-hint">請先輸入通關密碼才能送出</p>
+    <div id="status" class="status" hidden></div>
+    <div class="submit-bar">
+      <span id="clearToolsMsg" class="hint" style="margin:0 auto 0 0"></span>
+      <button type="button" id="clearToolsBtn" class="ghost-btn">清除換算工具記憶</button>
+      <button type="button" id="saveBtn" class="action-btn action-primary" disabled>送出／更新本日工項完成量</button>
+    </div>
+  </section>
+</main>
+
+<footer class="pagefoot">資料寫入 Google 試算表「工項完成量」，並同步到雲端「施工日報彙整」的「工項」分頁</footer>
+
+<script src="config.js?v=20260921a"></script>
+<script src="items-blocks.js?v=20261107f"></script>
+<script src="items.js?v=20261107f"></script>
+</body>
+</html>

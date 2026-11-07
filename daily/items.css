@@ -1,0 +1,71 @@
+/* 工項完成量頁專用樣式（色票、卡片、按鈕沿用 style.css；規則取自已驗證的範本頁） */
+.case-bar .pill { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; font-size: 14px; }
+.hint { margin: 4px 2px 12px; font-size: 12px; color: var(--text-muted); }
+.dirty { font-size: 12px; color: var(--accent); font-weight: 600; }
+.link-btn { text-decoration: none; display: inline-block; }
+.summary-bar { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; font-size: 13px; padding: 8px 12px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--border); margin-bottom: 12px; }
+.summary-bar b { font-family: var(--font-num); }
+.summary-bar .warn { color: var(--danger); font-weight: 600; }
+.tools { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.tools input[type="search"] { flex: 1 1 160px; min-width: 0; font: inherit; font-size: 14px; color: var(--text); background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; }
+.tools input:focus, .qty input:focus, .open-row input:focus { outline: none; border-color: var(--accent); }
+
+.grp { border: 1px solid var(--border); border-radius: 10px; margin-bottom: 10px; background: var(--surface); overflow: hidden; }
+.grp > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 10px 12px; font-size: 13px; font-weight: 600; background: var(--surface-2); }
+.grp > summary::-webkit-details-marker { display: none; }
+.grp .arrow { color: var(--text-muted); transition: transform .15s; }
+.grp[open] > summary .arrow { transform: rotate(90deg); }
+.grp.solo > .row { border-top: 0; }
+.grp.muted { opacity: .6; }
+.seq { display: inline-block; min-width: 1.6em; margin-right: 6px; font-family: var(--font-num); font-size: 11px; font-weight: 600; color: var(--text-muted); text-align: right; }
+.grp > summary .sub { font-size: 11.5px; font-weight: 400; color: var(--text-muted); }
+.cnt { margin-left: auto; font-size: 11px; font-weight: 400; color: var(--text-muted); }
+.cnt.on { color: var(--accent); font-weight: 700; }
+.row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; padding: 10px 12px; border-top: 1px solid var(--border); align-items: center; }
+.row[hidden] { display: none; }
+.nm { font-size: 13px; overflow-wrap: anywhere; }
+.code { font-family: var(--font-num); font-size: 11px; background: var(--accent-soft); color: var(--accent); border-radius: 6px; padding: 1px 6px; margin-right: 6px; white-space: nowrap; }
+.meta { font-size: 11.5px; color: var(--text-muted); margin-top: 3px; display: flex; flex-wrap: wrap; gap: 2px 12px; }
+.meta b { font-family: var(--font-num); font-weight: 600; color: var(--text); }
+.bar { height: 4px; background: var(--border); border-radius: 4px; margin-top: 6px; overflow: hidden; }
+.bar i { display: block; height: 100%; width: 0; background: var(--accent); }
+.row.over .bar i { background: var(--danger); }
+.row.over .rem { color: var(--danger); font-weight: 600; }
+.row.bad .qty input { border-color: var(--danger); background: var(--danger-soft); }
+.qty { display: flex; align-items: center; gap: 4px; }
+.qty input { width: 92px; text-align: right; font: inherit; font-family: var(--font-num); font-size: 14px; color: var(--text); background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 7px 8px; }
+.qty .u { font-size: 11px; color: var(--text-muted); width: 30px; }
+.row.filled { background: var(--full-soft); }
+
+
+
+textarea.gen { width: 100%; font: inherit; font-size: 13px; color: var(--text); background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; resize: vertical; min-height: 110px; }
+.submit-bar { display: flex; justify-content: flex-end; align-items: center; gap: 12px; flex-wrap: wrap; padding-bottom: 12px; }
+.ghost-btn:disabled { opacity: .45; cursor: not-allowed; }
+.tool-btn { border: 1px solid var(--border); background: var(--surface-2); color: var(--accent); border-radius: 6px; padding: 0 8px; font: inherit; font-size: 11.5px; line-height: 20px; cursor: pointer; }
+.tool-btn:hover, .tool-btn[aria-expanded="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.tool { grid-column: 1 / -1; background: var(--surface-2); border: 1px dashed var(--accent); border-radius: 8px; padding: 10px; font-size: 12.5px; }
+.tool[hidden] { display: none; }
+.tool .tf { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: flex-end; }
+.tool label { display: flex; flex-direction: column; gap: 3px; font-size: 11.5px; color: var(--text-muted); min-width: 0; }
+.tool input, .tool select, .tool textarea { font: inherit; font-size: 13px; font-family: var(--font-num); color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 5px 7px; max-width: 100%; }
+.tool input:focus, .tool select:focus, .tool textarea:focus { outline: none; border-color: var(--accent); }
+.tool input.s { width: 84px; }
+.tool select { font-family: var(--font-ui); }
+.tool textarea { width: 100%; min-height: 54px; resize: vertical; }
+.tool .res { margin-top: 8px; font-weight: 700; font-family: var(--font-num); min-height: 1.4em; }
+.tool .res.err { color: var(--danger); font-family: var(--font-ui); font-weight: 600; }
+.tool .acts { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.tool .note { margin-top: 6px; font-size: 11.5px; color: var(--text-muted); }
+.blk-list { max-height: 220px; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); }
+.blk { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: center; padding: 4px 8px; border-top: 1px solid var(--border); }
+.blk:first-child { border-top: 0; }
+.tool .blk-l { flex-direction: row; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text); }
+.tool .blk-l input { width: 16px; height: 16px; padding: 0; }
+.blk-v { font-family: var(--font-num); font-size: 12px; color: var(--text-muted); }
+.blk .ghost-btn { padding: 0 8px; }
+.blk-d { display: block; font-size: 10.5px; color: var(--text-muted); font-family: var(--font-num); }
+.tool .blk-x { flex-direction: row; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text); }
+.tool .blk-x input { width: 16px; height: 16px; padding: 0; }
+.blk-more { margin-top: 10px; }
+.blk-more > summary { cursor: pointer; font-size: 12px; color: var(--text-muted); }

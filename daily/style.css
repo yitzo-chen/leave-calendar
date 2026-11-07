@@ -426,6 +426,13 @@ main { max-width: 720px; margin: 0 auto; padding: 20px; }
   body.printing-report { background: #fff; }
 }
 
+/* 工項完成量按鈕（連結）與主任／工安的姓名快選 */
+.link-btn { text-decoration: none; display: inline-block; }
+.chip-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.chip-row:empty { display: none; }
+.chip { border: 1px solid var(--border); background: var(--surface-2); color: var(--text); border-radius: 999px; padding: 2px 12px; font: inherit; font-size: 12px; cursor: pointer; }
+.chip:hover { border-color: var(--accent); color: var(--accent); }
+
 /* 回主頁連結（頂欄右側） */
 .home-link {
   margin-left: auto;
