@@ -50,6 +50,13 @@ Apps Script 編輯器 → 左側齒輪「專案設定」→「指令碼屬性」
 - **部署順序（先備份）**：①複製一份試算表（Drive）與目前的 xlsx 彙整檔當備份 ②把 `google-apps-script.gs`、`xlsx/xlsx-builder.js`、`xlsx/xlsx-drive.gs` 貼進 Apps Script 並存檔 ③執行 `setupSheets()`（只會新增兩個分頁）④部署新版本 ⑤確認 GET `workItems`／`leaderNames` 正常後，才 push 前端（GitHub Pages）。前端先上、後端還沒上時，新頁面會顯示「後端尚未更新」，日報頁其餘功能不受影響。
 - 本機測試：`node local-dev-server.js 8777`（假後端，跑真正的 .gs 邏輯）＋把前端複製到暫存資料夾、`config.js` 的 `SCRIPT_URL` 指向 `http://localhost:8777`；`/__xlsx` 可下載假 Drive 內的 xlsx 用 Excel 開啟檢查。**不要直接改 repo 內的 `config.js` 來測試。**
 
+## 日報 xlsx：本工人員欄 8 列（2026-11-10 已部署：Apps Script 第21版、Drive 範本已換、更新全部日報13個分頁；尚未 commit）
+
+- 範本人員區「本工」上午／下午由各 6 列改為各 8 列；「預計明日施工項目」由 11 列縮為 7 列（22~28），第 29 列起為人員區標題、上午 30~37、下午 38~45，請款表（46~52）與所有列高不變。
+- 範本轉換腳本：`D:\AI\日報系統\port_template_本工8列.py`；builder 的 `CAP.crew=8`、`CAP.tomorrow=7`、`ROWS.crewAm=30`、`ROWS.crewPm=38`。
+- **部署順序**（範本與程式必須同步，否則會寫壞檔）：①貼 `xlsx-builder.js` 進 Apps Script ②把新範本 `日報範本.xlsx` 覆蓋 Drive 同名檔（檔案 ID 不變，作法見 `D:\AI\日報系統\進度紀錄.md` 10/07 13:50）③選單「更新全部日報」。回復：舊範本備份在 `D:\AI\日報系統\備份\日報範本_本工8列前_20261110.xlsx`。
+- 網頁列印版（`buildPeopleRows`）是另一套版面（每時段至少 6 列、不夠自動加），這次沒動。
+
 ## 後端 API（目前只能用 curl 測試，前端還沒寫）
 
 - `GET ?action=config` — 讀取啟用中的工種/機具/材料清單 + 基本資料

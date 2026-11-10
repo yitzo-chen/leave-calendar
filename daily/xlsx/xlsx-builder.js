@@ -10,10 +10,10 @@
  */
 var XlsxBuilder = (function () {
   // ---------- 常數（來自 cellmap.json，範本原狀） ----------
-  var CAP = { labor: 11, equipment: 10, material: 15, today: 13, tomorrow: 11, crew: 6 };
+  var CAP = { labor: 11, equipment: 10, material: 15, today: 13, tomorrow: 7, crew: 8 };
   var ROWS = {
     labor: 8, equipment: 20, material: 31, today: 8, tomorrow: 22,
-    crewAm: 34, crewPm: 40,
+    crewAm: 30, crewPm: 38, // 2026-11-10：本工上午/下午各 8 列（原 6 列），明日施工項目縮為 7 列
   };
   var TEXT_LINE_UNITS = 58; // H:S 合併寬約 64 個字寬單位，保守取 58（中文字算 2）
   var CATEGORY_KEY = { "工種": "labor", "機具": "equipment", "材料": "material" };
@@ -265,7 +265,7 @@ var XlsxBuilder = (function () {
       apply(ref, "name" + best, { fontId: best, align: shrink.align });
     });
 
-    var shrinkRefs = refsOf("M", 34, 45).concat(refsOf("P", 34, 45), ["J34", "J37", "J40", "J43", "O53"],
+    var shrinkRefs = refsOf("M", 30, 45).concat(refsOf("P", 30, 45), ["J30", "J34", "J38", "J42", "O53"],
       refsOf("A", 47, 51), refsOf("C", 47, 51), refsOf("P", 47, 51), refsOf("R", 47, 51)); // 後四組＝請款表的區域/期別/備註(P:Q)/發票(R:S)
     shrinkRefs.forEach(function (ref) { apply(ref, "shrink", shrink); });
 
@@ -485,7 +485,7 @@ var XlsxBuilder = (function () {
     fillLines(h.todayWork, ROWS.today, CAP.today, "本日施工項目");
     fillLines(h.tomorrowPlan, ROWS.tomorrow, CAP.tomorrow, "預計明日施工項目");
 
-    // 人員與加班（上午、下午各 6 列）
+    // 人員與加班（上午、下午各 8 列）
     var att = data.attendance || [];
     function fillCrew(startRow, shift, director, safety) {
       var hoursKey = shift === "am" ? "amHours" : "pmHours";
@@ -510,12 +510,12 @@ var XlsxBuilder = (function () {
         xml = setCell(xml, "P" + row, hrs && p.reason ? p.reason : "");
       }
       xml = setCell(xml, "J" + startRow, director || "");
-      xml = setCell(xml, "J" + (startRow + 3), safety || "");
+      xml = setCell(xml, "J" + (startRow + 4), safety || "");
       xml = setCell(xml, "L" + startRow, "本工");
     }
     fillCrew(ROWS.crewAm, "am", h.directorAm, h.safetyAm);
     fillCrew(ROWS.crewPm, "pm", h.directorPm, h.safetyPm);
-    xml = setCell(xml, "P33", "加班原因");
+    xml = setCell(xml, "P29", "加班原因");
 
     // 請款表（A46:S52，範本已含框線與合併）：請款日期 ≤ 本日的列，最多 5 列；總合計保留公式並寫入快取值
     var bill = computeBilling(data.billing, data.date, warnings);
@@ -549,7 +549,7 @@ var XlsxBuilder = (function () {
     // 合併儲存格：日期 J5:L5、加班原因欄 P:S 逐列合併（請款表區的合併已在範本內）
     xml = replaceMerges(xml, function (refs) {
       refs.push("J5:L5");
-      for (var row = 33; row <= 45; row++) refs.push("P" + row + ":S" + row);
+      for (var row = 29; row <= 45; row++) refs.push("P" + row + ":S" + row);
       return refs;
     });
 

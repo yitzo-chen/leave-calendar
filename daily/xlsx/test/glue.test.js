@@ -56,7 +56,7 @@ const F = (env) => Object.values(env.state.files).find((f) => f.name === OUTPUT_
   });
   T("G3", "分頁內容：公司工 4/4、累計＝(3+2)/2+(4+4)/2＝6.5、人員林二 加班1 材料進場", () => {
     const s = sheetVals(F(env).bytes).Sheets["115.9.20"];
-    return eq([s.A8.v, s.D8.v, s.E8.v, s.F8.v, s.M34.v, s.O34.v, s.P34.v, s.A3.v, s.J34.v], ["公司工", 4, 4, 6.5, "林二", 1, "材料進場", "業主：中油", "甲"]);
+    return eq([s.A8.v, s.D8.v, s.E8.v, s.F8.v, s.M30.v, s.O30.v, s.P30.v, s.A3.v, s.J30.v], ["公司工", 4, 4, 6.5, "林二", 1, "材料進場", "業主：中油", "甲"]);
   });
   T("G4", "停用項目：當天無紀錄不列出；有紀錄才列出（9/18 有『舊工種』）", () => {
     const s20 = sheetVals(F(env).bytes).Sheets["115.9.20"];
@@ -108,11 +108,11 @@ const F = (env) => Object.values(env.state.files).find((f) => f.name === OUTPUT_
     e2.state.files[e2.state.props["XLSX_FILE_ID_" + CASE_ID]] && (e2.ctx.UrlFetchApp.fetch = () => ({ getResponseCode: () => 500, getContentText: () => "boom" }));
     try { e2.call(call2("xlsxUpdateForDate", "2026-09-20")); return "應該要丟錯"; } catch (e) { return /HTTP 500/.test(String(e.message)) || String(e.message); }
   });
-  T("G14", "產出的 xlsx 可被 SheetJS 完整讀回（分頁數與合併數 221）", () => {
+  T("G14", "產出的 xlsx 可被 SheetJS 完整讀回（分頁數與合併數 225）", () => {
     const e2 = makeGlueEnv({ sheetsData: baseSheets(), driveFiles: { "日報範本.xlsx": TEMPLATE_BYTES } });
     e2.call(`xlsxRebuildAll('${CASE_ID}')`);
     const wb = sheetVals(Object.values(e2.state.files).find((f) => f.name === OUTPUT_NAME).bytes);
-    return eq([wb.SheetNames, wb.Sheets["115.9.18"]["!merges"].length], [["115.9.18", "115.9.20"], 221]);
+    return eq([wb.SheetNames, wb.Sheets["115.9.18"]["!merges"].length], [["115.9.18", "115.9.20"], 225]);
   });
   // ---------- 請款資料與備註累加（2026-10-07）----------
   const billingSheets = () => {

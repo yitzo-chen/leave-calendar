@@ -89,9 +89,9 @@ async function toBuf(parts) {
     return (r.warnings.length === 1 && /有數字的項目共 13 項/.test(r.warnings[0])) || r.warnings;
   });
   const P = (n, extra) => Array.from({ length: n }, (_, i) => Object.assign({ name: "人" + i, am: true, pm: false, amHours: 0, pmHours: 0, reason: "" }, extra ? extra(i) : {}));
-  T("R08", "上午 9 人（第 8、9 人有加班）：加班者優先、其餘併入第 6 列並警告", () => {
+  T("R08", "上午 9 人（第 8、9 人有加班）：加班者優先、其餘併入第 8 列並警告", () => {
     const r = XB.buildDaySheet(tsheet, mk("2026-09-20", { attendance: P(9, (i) => (i >= 7 ? { amHours: 1, reason: "趕" } : {})) }), O);
-    return eq([r.warnings.length, r.xml.includes(">人7<"), r.xml.includes(">人8<"), /<t xml:space="preserve">人3、人4、人5、人6</.test(r.xml)], [1, true, true, true]);
+    return eq([r.warnings.length, r.xml.includes(">人7<"), r.xml.includes(">人8<"), /<t xml:space="preserve">人5、人6</.test(r.xml)], [1, true, true, true]);
   });
   T("R09", "本日施工項目 30 行：超過 13 行併入最後一行並警告", () => {
     const text = Array.from({ length: 30 }, (_, i) => "第" + (i + 1) + "行").join("\n");
@@ -110,7 +110,7 @@ async function toBuf(parts) {
   const wbN = XB.assembleWorkbook(base, [{ name: "115.9.20", xml: nastySheet }]);
   const wsN = XLSX.read(await toBuf(wbN)).Sheets["115.9.20"];
   T("R10", "特殊字元原樣寫入且不破壞結構（SheetJS 讀回）", () => eq(
-    [wsN.A3.v, wsN.A4.v, wsN.J34.v, wsN.J37.v, wsN.M34.v, wsN.P34.v, wsN.O53.v, wsN.A8.v],
+    [wsN.A3.v, wsN.A4.v, wsN.J30.v, wsN.J34.v, wsN.M30.v, wsN.P30.v, wsN.O53.v, wsN.A8.v],
     ["業主：" + nasty[0], "工程名稱：" + nasty[1], "=1+1", "  前後空白  ", nasty[4], "ctrl", nasty[7], nasty[0]]));
   T("R11", "注入字串沒有製造出額外儲存格（Z1 不存在）", () => wsN.Z1 === undefined || "Z1 被注入");
   T("R12", "備註多行：改放 U 欄（列印範圍外），每行一列、前綴民國日期；A46 是請款表標題「區域」", () => eq(
@@ -124,9 +124,9 @@ async function toBuf(parts) {
     const s = x.Sheets["115.9.19"];
     return eq([s.A8.v, s.D8.v, s.E8.v, s.F8.v, s.J5.v, s.N5.v, s.P5.v], ["公司工", 2, 2, 3, "日期：115", 9, 19]);
   });
-  T("R15", "SheetJS 合併數 221、不再有整塊備註框 A46:S52，含請款表 E46:G46 與日期 J5:L5", () => {
+  T("R15", "SheetJS 合併數 225、不再有整塊備註框 A46:S52，含請款表 E46:G46 與日期 J5:L5", () => {
     const m = x.Sheets["115.9.19"]["!merges"].map((r) => XLSX.utils.encode_range(r));
-    return eq([m.length, m.includes("A46:S52"), m.includes("E46:G46"), m.includes("J5:L5")], [221, false, true, true]);
+    return eq([m.length, m.includes("A46:S52"), m.includes("E46:G46"), m.includes("J5:L5")], [225, false, true, true]);
   });
   T("R16", "檔案大小合理（3 天 < 40KB）", () => buf.length < 40000 || buf.length);
 

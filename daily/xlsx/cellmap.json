@@ -122,35 +122,36 @@
       "col": "H:S(每列各自合併)",
       "rows": [
         22,
-        32
+        28
       ],
-      "capacity": 11,
-      "labelCell": "H21"
+      "capacity": 7,
+      "labelCell": "H21",
+      "_2026-11-10": "原 22~32（11 列）縮為 22~28（7 列），騰出 4 列給人員區"
     },
     "widthChars": "約 66 個半形字寬（中文約 30 字）；超過需自動折行成多列，超出容量則併入最後一列"
   },
   "people": {
     "am": {
-      "labelCell": "H34",
-      "director": "J34(J34:K36 合併)",
-      "safety": "J37(J37:K39 合併)",
-      "crewLabel": "L34(L34:L39 合併)",
+      "labelCell": "H30",
+      "director": "J30(J30:K33 合併)",
+      "safety": "J34(J34:K37 合併)",
+      "crewLabel": "L30(L30:L37 合併)",
       "rows": [
-        34,
-        39
+        30,
+        37
       ],
-      "capacity": 6
+      "capacity": 8
     },
     "pm": {
-      "labelCell": "H40",
-      "director": "J40(J40:K42 合併)",
-      "safety": "J43(J43:K45 合併)",
-      "crewLabel": "L40(L40:L45 合併)",
+      "labelCell": "H38",
+      "director": "J38(J38:K41 合併)",
+      "safety": "J42(J42:K45 合併)",
+      "crewLabel": "L38(L38:L45 合併)",
       "rows": [
-        40,
+        38,
         45
       ],
-      "capacity": 6
+      "capacity": 8
     },
     "columns": {
       "name": "M(M:N 每列合併)",
@@ -158,26 +159,26 @@
       "overtimeReason": "P:S"
     },
     "headers": {
-      "row": 33,
-      "name": "M33",
-      "overtime": "O33",
-      "overtimeReasonHeader": "P33"
+      "row": 29,
+      "name": "M29",
+      "overtime": "O29",
+      "overtimeReasonHeader": "P29"
     },
-    "crewLabelText": "本工（範本原為『粗工』，L34 與 L40 改為固定文字『本工』）",
+    "crewLabelText": "本工（範本原為『粗工』，L30 與 L38 改為固定文字『本工』；2026-11-10 起每時段 8 列、標題列移到第 29 列）",
     "mergesToAdd": [
-      "P33:S33",
-      "P34:S34",
+      "P29:S29",
+      "P30:S30",
       "…逐列…",
       "P45:S45"
     ],
     "mergeCountBefore": 202,
     "mergeCountAfter": 175,
     "templateDefaults": {
-      "J34": "陳易佐",
-      "J40": "陳易佐"
+      "J30": "陳易佐",
+      "J38": "陳易佐"
     },
-    "overflowPolicy": "每時段最多 6 人；超過時有加班的人優先，其餘姓名以『、』併入第 6 列並在回傳中警告",
-    "note": "P33:S33 ~ P45:S45 共13個新增；加上備註區 -41 +1，最終合併數 175"
+    "overflowPolicy": "每時段最多 8 人；超過時有加班的人優先，其餘姓名以『、』併入第 8 列並在回傳中警告",
+    "note": "P29:S29 ~ P45:S45 共17個新增（2026-11-10 起；原 P33~P45 共13個）；目前產出分頁合併數 225"
   },
   "billing": {
     "_說明": "2026-10-07 改版（取代舊的整塊備註框 A46:S52）：請款表。版面取自使用者本機 115.10.6 分頁，新範本＝日報範本_新版.xlsx，由 port_template_請款表.py 產生",
