@@ -24,8 +24,41 @@
   function shift(s, n) { const [y, m, d] = s.split("-").map(Number); return ymd(new Date(y, m - 1, d + n)); }
   function makeClientId() { return window.crypto && crypto.randomUUID ? crypto.randomUUID() : Date.now() + "-" + Math.random().toString(36).slice(2); }
 
+  // ---------- 計算式（量體類工項：m、m2、m3、ton、kg 才有；個、支、組這類計數單位不提供） ----------
+  const MEASURE_UNITS = ["m", "m2", "m3", "㎡", "㎥", "ton", "t", "kg", "公噸", "公斤"];
+  function isMeasure(unit) { return MEASURE_UNITS.indexOf(String(unit || "").trim().toLowerCase().replace("²", "2").replace("³", "3")) !== -1; }
+  // 安全的四則運算解析（只認數字與 + - * / ( )，也接受 × ÷ 與全形字元、千分位逗號；不用 eval）。
+  // 回傳 { empty:true }、{ err:"原因" } 或 { val }；結果必須是不小於 0 的有限數。
+  function evalFormula(src) {
+    let t = String(src == null ? "" : src).replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
+      .replace(/[＋＊／（）．，－＝]/g, (c) => ({ "＋": "+", "＊": "*", "／": "/", "（": "(", "）": ")", "．": ".", "，": ",", "－": "-", "＝": "=" }[c]))
+      .replace(/×/g, "*").replace(/÷/g, "/").replace(/,/g, "").replace(/\s+/g, "");
+    if (t[0] === "=") t = t.slice(1);
+    if (!t) return { empty: true };
+    let i = 0;
+    const bad = (m) => { const e = new Error(m); e.isFx = true; throw e; };
+    function expr() { let v = term(); while (t[i] === "+" || t[i] === "-") { const op = t[i++]; const r = term(); v = op === "+" ? v + r : v - r; } return v; }
+    function term() { let v = factor(); while (t[i] === "*" || t[i] === "/") { const op = t[i++]; const r = factor(); if (op === "/" && r === 0) bad("不能除以 0"); v = op === "*" ? v * r : v / r; } return v; }
+    function factor() {
+      if (t[i] === "-") { i++; return -factor(); }
+      if (t[i] === "+") { i++; return factor(); }
+      if (t[i] === "(") { i++; const v = expr(); if (t[i] !== ")") bad("括號沒有成對"); i++; return v; }
+      const m = /^(\d+\.?\d*|\.\d+)/.exec(t.slice(i));
+      if (!m) bad(i >= t.length ? "算式沒寫完" : "看不懂「" + t[i] + "」（只能用數字與 + - × ÷ ( )）");
+      i += m[0].length; return Number(m[0]);
+    }
+    try {
+      const v = expr();
+      if (i < t.length) bad("看不懂「" + t[i] + "」（只能用數字與 + - × ÷ ( )）");
+      if (!isFinite(v)) bad("結果不是有效數字");
+      if (v < 0) bad("結果不可為負數");
+      return { val: v };
+    } catch (e) { if (e.isFx) return { err: e.message }; throw e; }
+  }
+  const stripEq = (s) => String(s || "").trim().replace(/^[=＝]\s*/, "");
+
   // ---------- 狀態 ----------
-  let currentCaseId = "", date = ymd(new Date()), ITEMS = [], itemsSig = "", serverPrior = {}, loadedValues = {}, draft = {}, dirty = false, dayLoaded = false;
+  let currentCaseId = "", date = ymd(new Date()), ITEMS = [], itemsSig = "", serverPrior = {}, loadedValues = {}, draft = {}, formulas = {}, dirty = false, dayLoaded = false;
   const rows = {};
   function prior(id) { return serverPrior[id] || 0; } // 到前一天為止的累計（期初已完成＋之前各日），由後端算好
   function setDirty(v) { dirty = v; $("dirty").hidden = !v; }
@@ -133,7 +166,7 @@
       res.textContent = msg ? msg : '= ' + fmt(val) + ' ' + it.unit + extra;
       btns.forEach(b => { b.disabled = val == null; });
     }
-    function put(v) { draft[it.id] = String(r2(v)); setDirty(true); rows[it.id].inp.value = draft[it.id]; refresh(); }
+    function put(v) { draft[it.id] = String(r2(v)); formulas[it.id] = ""; setDirty(true); rows[it.id].inp.value = draft[it.id]; refresh(); }
     panel.querySelector('[data-a="set"]').onclick = () => { if (val != null) put(val); };
     panel.querySelector('[data-a="add"]').onclick = () => { if (val != null) put((num(draft[it.id]) || 0) + val); };
     panel.addEventListener('input', e => { if (e.target.dataset.f === 'mode' || e.target.dataset.f === 'zone') pileSync(); if (e.target.dataset.f === 'hn' && e.target.value.trim() && !isNaN(num(e.target.value))) q('pc').value = String(r2(num(e.target.value) / HP * 100)); calc(); });
@@ -194,7 +227,7 @@
       });
     }
     function put(add) {
-      const apply = (id, v) => { draft[id] = String(r2((add ? (num(draft[id]) || 0) : 0) + v)); setDirty(true); rows[id].inp.value = draft[id]; };
+      const apply = (id, v) => { draft[id] = String(r2((add ? (num(draft[id]) || 0) : 0) + v)); formulas[id] = ""; setDirty(true); rows[id].inp.value = draft[id]; };
       apply(it.id, tot.v);
       refresh();
     }
@@ -233,7 +266,20 @@
         '<div class="bar"><i></i></div></div>' +
         '<div class="qty"><input type="text" inputmode="decimal" autocomplete="off" aria-label="' + esc(it.seq + " " + it.name + " 本日完成量") + '" placeholder="0"><span class="u">' + esc(it.unit) + "</span></div>";
       const inp = row.querySelector("input");
-      inp.addEventListener("input", () => { draft[it.id] = inp.value; setDirty(true); refresh(); syncSubmit(); });
+      inp.addEventListener("input", () => { draft[it.id] = inp.value; formulas[it.id] = ""; setDirty(true); refresh(); syncSubmit(); }); // 直接改本日量＝不再由計算式算出，計算式清空
+      let fx = null, fxm = null;
+      if (isMeasure(it.unit)) { // 量體類工項才有計算式欄位
+        const fxw = document.createElement("div"); fxw.className = "fx";
+        fxw.innerHTML = '<label>計算式<input type="text" inputmode="decimal" autocomplete="off" aria-label="' + esc(it.seq + " " + it.name + " 計算式") + '" placeholder="例：12.5×8+3.2×4"></label><span class="fxm"></span>';
+        row.appendChild(fxw);
+        fx = fxw.querySelector("input"); fxm = fxw.querySelector(".fxm");
+        fx.addEventListener("input", () => {
+          formulas[it.id] = fx.value;
+          const f = evalFormula(fx.value);
+          if (f.val !== undefined) draft[it.id] = String(r2(f.val));
+          setDirty(true); refresh(); syncSubmit();
+        });
+      }
       const tb = row.querySelector(".tool-btn"), panel = document.createElement("div");
       panel.className = "tool"; panel.hidden = true; row.appendChild(panel);
       tb.addEventListener("click", () => {
@@ -241,12 +287,12 @@
         if (open && !panel.dataset.ready) { makeTool(it, panel); panel.dataset.ready = "1"; }
       });
       wrap.appendChild(row); wrap._items = [it]; box.appendChild(wrap);
-      rows[it.id] = { el: row, inp, cum: row.querySelector(".cum"), rem: row.querySelector(".rem"), pct: row.querySelector(".pct"), bar: row.querySelector(".bar i"), it };
+      rows[it.id] = { el: row, inp, fx, fxm, cum: row.querySelector(".cum"), rem: row.querySelector(".rem"), pct: row.querySelector(".pct"), bar: row.querySelector(".bar i"), it };
     });
   }
 
   function refresh() {
-    let filled = 0, overN = 0, bad = 0;
+    let filled = 0, overN = 0, bad = 0, fxBad = 0;
     const lines = [];
     ITEMS.forEach((it) => {
       const R = rows[it.id], raw = draft[it.id];
@@ -258,12 +304,19 @@
       R.bar.style.width = Math.min(100, pct) + "%";
       R.el.classList.toggle("over", over); R.el.classList.toggle("bad", isBad); R.el.classList.toggle("filled", v > 0);
       if (document.activeElement !== R.inp) R.inp.value = raw == null ? "" : raw;
+      if (R.fx) {
+        const ft = formulas[it.id] || "", f = evalFormula(ft);
+        if (document.activeElement !== R.fx) R.fx.value = ft;
+        R.fxm.textContent = f.err ? f.err : f.val !== undefined ? "= " + fmt(f.val) + " " + it.unit : "";
+        R.fxm.classList.toggle("err", !!f.err); R.el.classList.toggle("fxbad", !!f.err); if (f.err) fxBad++;
+      }
       if (v > 0) { filled++; lines.push(it.name + "　本日 " + fmt(v) + " " + it.unit); }
       if (over) overN++;
     });
     $("summary").innerHTML = "<span>本日有填 <b>" + filled + "</b> 項</span>" +
       (overN ? '<span class="warn">累計超出預估 ' + overN + " 項（只提醒，不擋送出）</span>" : "<span>累計都在預估數量內</span>") +
-      (bad ? '<span class="warn">' + bad + " 格不是數字</span>" : "");
+      (bad ? '<span class="warn">' + bad + " 格不是數字</span>" : "") +
+      (fxBad ? '<span class="warn">' + fxBad + " 個計算式有誤</span>" : "");
     $("gen").value = lines.map((l, i) => (i + 1) + ". " + l).join("\n");
   }
 
@@ -293,8 +346,9 @@
       const sig = JSON.stringify(res.items.map((i) => [i.seq, i.name, i.unit, i.qty]));
       if (sig !== itemsSig) { ITEMS = res.items.map((i) => ({ id: String(i.seq), seq: i.seq, name: i.name, unit: i.unit, qty: Number(i.qty) || 0 })); itemsSig = sig; build(); }
       if (!ITEMS.length) showStatus("這個案場還沒有「合約工項」資料，請到試算表「合約工項」分頁新增。", "error");
-      serverPrior = res.prior || {}; loadedValues = {}; draft = {};
+      serverPrior = res.prior || {}; loadedValues = {}; draft = {}; formulas = {};
       Object.keys(res.values || {}).forEach((k) => { loadedValues[k] = Number(res.values[k]); draft[k] = String(res.values[k]); });
+      Object.keys(res.formulas || {}).forEach((k) => { formulas[k] = String(res.formulas[k]); });
       setDirty(false); dayLoaded = true; syncLinks(); refresh();
       $("loadStatus").textContent = Object.keys(loadedValues).length ? "已載入這天已存的資料" : "";
     } catch (err) {
@@ -308,14 +362,24 @@
     const pw = $("fPassword").value.trim();
     if (!pw) { showStatus("請先輸入通關密碼", "error"); return; }
     if (!dayLoaded) { showStatus("資料還沒讀取成功，不能送出", "error"); return; }
-    const items = [], clear = [], bad = [];
+    const items = [], clear = [], bad = [], badFx = [];
     ITEMS.forEach((it) => {
       const v = num(draft[it.id]);
       if (isNaN(v)) { bad.push(it.seq + " " + it.name); return; }
-      if (v > 0) items.push({ seq: it.seq, qty: r2(v) });
+      if (v > 0) {
+        const ft = stripEq(formulas[it.id]); let fxText = "";
+        if (ft) {
+          const f = evalFormula(ft);
+          if (f.err) { badFx.push(it.seq + " " + it.name + "（" + f.err + "）"); return; }
+          if (f.val === undefined || Math.abs(r2(f.val) - r2(v)) > 0.005) { badFx.push(it.seq + " " + it.name + "（計算式結果與本日完成量不一致）"); return; }
+          fxText = ft;
+        }
+        items.push(fxText ? { seq: it.seq, qty: r2(v), formula: fxText } : { seq: it.seq, qty: r2(v) });
+      }
       else if (loadedValues[it.id] > 0) clear.push(it.seq); // 載入時有值、現在被清空：視為使用者明確清除
     });
     if (bad.length) { showStatus("這些項目的完成量不是數字：" + bad.join("、"), "error"); return; }
+    if (badFx.length) { showStatus("這些項目的計算式有誤，請修正或清空計算式後再送出：" + badFx.join("、"), "error"); return; }
     if (!items.length && !clear.length) { showStatus("沒有要送出的內容：本日全部空白，這天也沒有存過資料。", "error"); return; }
     $("saveBtn").disabled = true; showStatus("送出中…");
     try {

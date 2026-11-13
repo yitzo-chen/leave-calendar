@@ -249,6 +249,44 @@ const doneRows = (env, caseId) => env.state.sheetsData["工項完成量"].slice(
     return eq([r.ok, r.date, r.xlsx.ok], [true, "2026-09-21", true]);
   });
 
+  // ---------- 計算式（2026-11-13）：量體類工項的計算式文字隨完成量一起存、讀、輸出到 xlsx ----------
+  const fxEnv = makeEnv();
+  fxEnv.state.sheetsData["工項完成量"].push(["2026-11-06", 5, 50, "old", "t", CASE_ID]); // 舊格式資料列（只有 6 欄、沒有計算式）
+  T("I29", "舊格式資料列（無計算式欄）：workItems 回 formulas 為空，values 照舊", () => {
+    const r = fxEnv.get({ action: "workItems", caseId: CASE_ID, date: "2026-11-06" });
+    return eq([r.ok, r.values, r.formulas], [true, { 5: 50 }, {}]);
+  });
+  T("I30", "saveWorkItems 帶計算式：存到第 7 欄、workItems 讀回、xlsx「工項」分頁 I 欄顯示；沒計算式的列 I 欄留白", () => {
+    const r = fxEnv.post(saveItems("2026-11-07", [{ seq: 1, qty: 3 }, { seq: 5, qty: 112.8, formula: "12.5×8+3.2×4" }]));
+    const g = fxEnv.get({ action: "workItems", caseId: CASE_ID, date: "2026-11-07" });
+    const s = book(fxEnv).Sheets["工項.115.11.07"];
+    return eq([r.ok, r.saved, fxEnv.state.sheetsData["工項完成量"].filter((x) => x[0] === "2026-11-07" && x[1] === 5)[0][6], g.formulas, s.I4.v, s.I5 === undefined || !s.I5.v, s.I7.v, s.F7.v],
+      [true, 2, "12.5×8+3.2×4", { 5: "12.5×8+3.2×4" }, "本日計算式", true, "12.5×8+3.2×4", 112.8]);
+  });
+  T("I31", "計算式開頭是 - 時存入防護用前導單引號，讀回與 xlsx 都還原成原文字", () => {
+    fxEnv.post(saveItems("2026-11-08", [{ seq: 5, qty: 7, formula: "-3+10" }]));
+    const raw = fxEnv.state.sheetsData["工項完成量"].filter((x) => x[0] === "2026-11-08")[0][6];
+    const g = fxEnv.get({ action: "workItems", caseId: CASE_ID, date: "2026-11-08" }), s = book(fxEnv).Sheets["工項.115.11.08"];
+    return eq([raw, g.formulas, s.I7.v], ["'-3+10", { 5: "-3+10" }, "-3+10"]);
+  });
+  T("I32", "計算式含不允許字元（字母、分號、=、函式）或超過 200 字：整批拒絕、不寫入", () => {
+    const before = JSON.stringify(fxEnv.state.sheetsData["工項完成量"]);
+    const bad = [{ seq: 5, qty: 1, formula: "abc" }, { seq: 5, qty: 1, formula: "1;2" }, { seq: 5, qty: 1, formula: "=1+1" }, { seq: 5, qty: 1, formula: "SUM(1,2)" }, { seq: 5, qty: 1, formula: "1+".repeat(101) }]
+      .map((it) => fxEnv.post(saveItems("2026-11-09", [{ seq: 1, qty: 2 }, it])).ok);
+    return eq([bad, JSON.stringify(fxEnv.state.sheetsData["工項完成量"]) === before], [[false, false, false, false, false], true]);
+  });
+  T("I33", "同一天再送一次但不帶計算式＝計算式清空（直接改量的情況）；全形字元與 ÷ 可存", () => {
+    fxEnv.post(saveItems("2026-11-07", [{ seq: 5, qty: 100 }]));
+    const a = fxEnv.get({ action: "workItems", caseId: CASE_ID, date: "2026-11-07" });
+    fxEnv.post(saveItems("2026-11-10", [{ seq: 5, qty: 5, formula: "（１０＋２）÷２.４" }]));
+    const b = fxEnv.get({ action: "workItems", caseId: CASE_ID, date: "2026-11-10" });
+    return eq([a.values[5], a.formulas, b.formulas], [100, {}, { 5: "（１０＋２）÷２.４" }]);
+  });
+  T("I34", "【資料保護】舊資料列在新增計算式後保持原樣（6 欄值不變），其他日期的計算式不被動", () => {
+    const old = fxEnv.state.sheetsData["工項完成量"].filter((x) => x[0] === "2026-11-06")[0], fx8 = fxEnv.state.sheetsData["工項完成量"].filter((x) => x[0] === "2026-11-08")[0];
+    return eq([old.slice(0, 6), old[6] === undefined || old[6] === "", fx8[6]], [["2026-11-06", 5, 50, "old", "t", CASE_ID], true, "'-3+10"]);
+  });
+
   console.log(R.map((r) => "[" + r[1] + "] " + r[0] + " " + r[2] + (r[3] ? "\n      → " + r[3] : "")).join("\n"));
   console.log({ total: R.length, notPass: R.filter((r) => r[1] !== "PASS").length });
 })();

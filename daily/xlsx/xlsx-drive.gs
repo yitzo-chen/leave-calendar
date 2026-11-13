@@ -182,10 +182,10 @@ function xlsxLoadDb_(caseId, caseInfo) {
 
 /**
  * 工項完成量資料（「合約工項」主表＋「工項完成量」每日表，皆依案場過濾）。分頁不存在＝尚未啟用此功能，回傳空資料。
- * @return {master:[{seq,name,unit,qty,opening,active}], byDate:{日期:{序號:本日量}}}
+ * @return {master:[{seq,name,unit,qty,opening,active}], byDate:{日期:{序號:本日量}}, formulaByDate:{日期:{序號:計算式文字}}}
  */
 function xlsxLoadItems_(ss, caseId) {
-  var out = { master: [], byDate: {} };
+  var out = { master: [], byDate: {}, formulaByDate: {} };
   var m = ss.getSheetByName(SHEET_ITEMS), d = ss.getSheetByName(SHEET_DONE);
   if (!m) return out;
   var mv = m.getDataRange().getValues();
@@ -205,6 +205,8 @@ function xlsxLoadItems_(ss, caseId) {
     var date = normalizeDate(r[0]), seq = Number(r[1]), q = Number(r[2]);
     if (!date || !isFinite(seq) || !isFinite(q)) return;
     (out.byDate[date] = out.byDate[date] || {})[seq] = q;
+    var fx = unsanitizeCell(r[6]).trim(); // 第 7 欄「計算式」；舊資料列沒有這欄（讀到空字串）
+    if (fx) (out.formulaByDate[date] = out.formulaByDate[date] || {})[seq] = fx;
   });
   return out;
 }
@@ -223,7 +225,7 @@ function xlsxItemSheets_(items, tsheet, caseInfo) {
     items.master.forEach(function (m) {
       var t = today[m.seq] || 0, prev = running[m.seq] || 0;
       if (!m.active && !t && !prev) return; // 已停用且與這天無關的項目不列出
-      rows.push({ seq: m.seq, name: m.name, unit: m.unit, qty: m.qty, prev: prev, today: t, cum: prev + t });
+      rows.push({ seq: m.seq, name: m.name, unit: m.unit, qty: m.qty, prev: prev, today: t, cum: prev + t, formula: (items.formulaByDate && items.formulaByDate[d] && items.formulaByDate[d][m.seq]) || "" });
     });
     items.master.forEach(function (m) { running[m.seq] = (running[m.seq] || 0) + (today[m.seq] || 0); });
     var r = XlsxBuilder.buildItemsSheet(st, { date: d, projectName: caseInfo && caseInfo.name, items: rows });

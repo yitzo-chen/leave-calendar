@@ -13,7 +13,7 @@ var SHEET_INTERNAL = "內部記錄"; // 選工/備註兩種日誌型記錄，僅
 var SHEET_BILLING = "請款資料"; // 使用者直接在試算表輸入；顯示在 xlsx 日報的請款表（A46:S52），欄位：案場｜請款日期｜區域｜期別｜本期請款金額｜目前進度｜備註｜發票
 var SHEET_CASES = "案場設定"; // 多案場：一案場一列，取代舊版單列的「基本資料」
 var SHEET_ITEMS = "合約工項"; // 工項完成量頁的項目主表（照日報原表 DPR 的項目與預估數量），欄位：案場｜序號｜項目名稱｜單位｜預估數量｜期初已完成｜啟用中；使用者可直接修改（綠色）
-var SHEET_DONE = "工項完成量"; // 每日完成量（只由「工項完成量」網頁寫入），欄位：日期｜序號｜本日完成量｜clientId｜更新時間｜案場
+var SHEET_DONE = "工項完成量"; // 每日完成量（只由「工項完成量」網頁寫入），欄位：日期｜序號｜本日完成量｜clientId｜更新時間｜案場｜計算式（量體類工項才有）
 var CASE_COL_DONE = 6;
 
 // 各資料表「案場」欄位的欄號（一律補在既有欄位最後面，比照當初新增主任/工安欄位的作法：
@@ -128,7 +128,9 @@ function setupSheets() {
   // 「工項完成量」：每日完成量，由網頁寫入；日期欄純文字。只補表頭，不動任何既有資料。
   var itemsDone = ss.getSheetByName(SHEET_DONE) || ss.insertSheet(SHEET_DONE);
   if (itemsDone.getRange(1, 1).getValue() === "") {
-    itemsDone.getRange(1, 1, 1, 6).setValues([["日期", "序號", "本日完成量", "clientId", "更新時間", "案場"]]);
+    itemsDone.getRange(1, 1, 1, 7).setValues([["日期", "序號", "本日完成量", "clientId", "更新時間", "案場", "計算式"]]);
+  } else if (itemsDone.getRange(1, 7).getValue() === "") {
+    itemsDone.getRange(1, 7).setValue("計算式"); // 2026-11-13 新增欄（量體類工項的計算式）：舊分頁只補表頭，既有資料不動
   }
   setDateColumnText(itemsDone);
 
@@ -210,7 +212,7 @@ function applyColorGuide_(ss) {
   });
   put(SHEET_DONE, function (sh) {
     sh.setTabColor(C.tabSys);
-    colorHeader_(sh, 1, 6, C.sysHeader);
+    colorHeader_(sh, 1, 7, C.sysHeader);
     sh.getRange("A1").setNote("⬜ 由日報網頁「工項完成量」頁寫入，請勿手動輸入。要修正請回該頁選日期修改。");
   });
   put(SHEET_LIST, function (sh) {
@@ -691,7 +693,10 @@ function doPost(e) {
         var wQty = checkQty(wit.qty, "工項 " + wSeq + " 的完成量");
         if (wQty > 1e9) throw validationError("工項 " + wSeq + " 的完成量超出合理範圍");
         wQty = Math.round(wQty * 100) / 100;
-        if (wQty > 0) wsWrites.push({ seq: wSeq, qty: wQty }); else wsDeletes.push(wSeq);
+        // 計算式（可省略）：只允許數字與 + - * / ( ) . , × ÷（含全形），長度上限 200；只存文字、不在後端求值（數量由網頁算好一起送）
+        var wFormula = checkText(wit.formula, "工項 " + wSeq + " 的計算式", 200, true);
+        if (wFormula && !/^[0-9０-９+＋\-－*＊\/／().．,，×÷（）\s]+$/.test(wFormula)) throw validationError("工項 " + wSeq + " 的計算式含有不允許的字元（只能用數字與 + - * / ( ) . × ÷）");
+        if (wQty > 0) wsWrites.push({ seq: wSeq, qty: wQty, formula: wFormula }); else wsDeletes.push(wSeq);
       }
       for (var wc = 0; wc < wsClear.length; wc++) {
         var wcSeq = Number(wsClear[wc]);
@@ -707,7 +712,7 @@ function doPost(e) {
         });
       }
       wsWrites.forEach(function (w) {
-        var vals = [wsDate, w.seq, w.qty, wsClientId, wsNow, caseId];
+        var vals = [wsDate, w.seq, w.qty, wsClientId, wsNow, caseId, sanitizeCell(w.formula || "")];
         var row = wsFindRow(w.seq);
         if (row === -1) row = wsSheet.getLastRow() + 1;
         ensureRows(wsSheet, row);
@@ -1099,20 +1104,24 @@ function doGet(e) {
     var wDate = String(e.parameter.date || "").trim();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(wDate)) return respond({ ok: false, error: "日期格式錯誤" });
     var wi = xlsxLoadItems_(ss, caseId);
-    var wPrior = {}, wValues = {};
+    var wPrior = {}, wValues = {}, wFormulas = {};
     wi.master.forEach(function (m) { wPrior[m.seq] = m.opening; });
     Object.keys(wi.byDate).forEach(function (d) {
       Object.keys(wi.byDate[d]).forEach(function (sq) {
         if (!(sq in wPrior)) return; // 不在主表的序號（主表被改掉）略過
         if (d < wDate) wPrior[sq] += wi.byDate[d][sq];
-        else if (d === wDate) wValues[sq] = wi.byDate[d][sq];
+        else if (d === wDate) {
+          wValues[sq] = wi.byDate[d][sq];
+          var wfx = ((wi.formulaByDate[d] || {})[sq]) || "";
+          if (wfx) wFormulas[sq] = wfx;
+        }
       });
     });
     Object.keys(wPrior).forEach(function (sq) { wPrior[sq] = Math.round(wPrior[sq] * 100) / 100; });
     var wItems = wi.master
       .filter(function (m) { return m.active || (m.seq in wValues); })
       .map(function (m) { return { seq: m.seq, name: m.name, unit: m.unit, qty: m.qty }; });
-    return respond({ ok: true, items: wItems, prior: wPrior, values: wValues });
+    return respond({ ok: true, items: wItems, prior: wPrior, values: wValues, formulas: wFormulas });
   }
 
   // 目前該案場 xlsx 輸出檔的網址；檔案還沒產生（尚未送出過日報）時 url 為空字串

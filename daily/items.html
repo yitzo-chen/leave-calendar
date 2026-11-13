@@ -6,7 +6,7 @@
 <title>工項完成量</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23C8630A'/%3E%3Ctext x='50' y='68' font-size='50' text-anchor='middle' fill='white' font-family='Arial'%3E工%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="style.css?v=20261107f">
-<link rel="stylesheet" href="items.css?v=20261107f">
+<link rel="stylesheet" href="items.css?v=20261113b">
 </head>
 <body>
 <header class="topbar">
@@ -49,7 +49,7 @@
     </div>
     <div id="groups"></div>
     <div id="msgEmpty" class="hint" hidden>沒有符合的項目。</div>
-    <p class="hint">每列的「🧮 換算」可用車次、支數、工天×產能、澆置區塊等方式算出數量再帶入；換算用的每車容量、區塊表修改只記在這個瀏覽器，不影響送出的資料。</p>
+    <p class="hint">量體類工項（m、m²、m³、ton、kg）每列多一格「計算式」，直接打例如 12.5×8+3.2×4，本日完成量會自動算出並隨送出存檔（彙整檔工項分頁多一欄「本日計算式」）；直接改本日完成量則計算式清空。個、支、組這類計數工項沒有計算式欄。每列的「🧮 換算」可用車次、支數、工天×產能、澆置區塊等方式算出數量再帶入；換算用的每車容量、區塊表修改只記在這個瀏覽器，不影響送出的資料。</p>
   </section>
 
   <section class="card">
@@ -81,6 +81,6 @@
 
 <script src="config.js?v=20260921a"></script>
 <script src="items-blocks.js?v=20261107f"></script>
-<script src="items.js?v=20261107f"></script>
+<script src="items.js?v=20261113a"></script>
 </body>
 </html>
